@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenBrain</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d10;
+        --panel: #14181d;
+        --panel-2: #191e24;
+        --border: #262c33;
+        --text: #e6e9ef;
+        --muted: #8a94a3;
+        --accent: #7cc4ff;
+        --accent-dim: #2a4a66;
+        --tag: #1f2a36;
+        --danger: #ff7a7a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 -apple-system, system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 14px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+      header input[type="search"] {
+        flex: 1;
+        max-width: 480px;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 12px;
+        font: inherit;
+      }
+      .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+      main {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 20px;
+        padding: 20px;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+      aside { display: flex; flex-direction: column; gap: 16px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .panel h2 {
+        margin: 0 0 10px;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        font-weight: 600;
+      }
+      form { display: flex; flex-direction: column; gap: 8px; }
+      label { font-size: 11px; color: var(--muted); }
+      textarea, input, select {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 10px;
+        font: inherit;
+        width: 100%;
+      }
+      textarea { resize: vertical; min-height: 90px; font-family: ui-monospace, monospace; }
+      button {
+        background: var(--accent);
+        color: #00121f;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.ghost {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .status { font-size: 11px; color: var(--muted); min-height: 14px; }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 13px;
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 4px 6px;
+        margin: 0 -6px;
+      }
+      .stat-row:hover { background: var(--panel-2); }
+      .stat-row .key { color: var(--text); }
+      .stat-row .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .stat-row.active { background: var(--accent-dim); }
+
+      .bignum {
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1;
+        margin: 4px 0 2px;
+      }
+
+      .spark {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 36px;
+        margin-top: 8px;
+      }
+      .spark .bar {
+        flex: 1;
+        background: var(--accent-dim);
+        border-radius: 2px 2px 0 0;
+        min-height: 2px;
+      }
+      .spark .bar:hover { background: var(--accent); }
+
+      .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+      .tag {
+        background: var(--tag);
+        color: var(--accent);
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        user-select: none;
+      }
+      .tag:hover { border-color: var(--accent); }
+      .tag.active { background: var(--accent); color: #00121f; font-weight: 600; }
+      .tag .n { opacity: 0.6; margin-left: 4px; font-size: 10px; }
+
+      .filter-bar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 14px;
+        min-height: 24px;
+      }
+      .pill {
+        background: var(--accent-dim);
+        color: var(--accent);
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .pill button {
+        background: transparent;
+        color: var(--accent);
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .list { display: flex; flex-direction: column; gap: 12px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .card .meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 8px;
+        align-items: center;
+      }
+      .card .content {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        max-height: 260px;
+        overflow: auto;
+      }
+      .card .summary {
+        color: var(--muted);
+        font-style: italic;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+      .card .tags {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        align-items: center;
+      }
+      .badge {
+        background: var(--tag);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
+      .add-tag {
+        background: transparent;
+        border: 1px dashed var(--border);
+        color: var(--muted);
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .add-tag:hover { border-color: var(--accent); color: var(--accent); }
+      .tag-input {
+        background: var(--bg);
+        border: 1px solid var(--accent);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 11px;
+        width: 120px;
+      }
+      .tag-remove {
+        margin-left: 4px;
+        opacity: 0;
+        cursor: pointer;
+      }
+      .tag:hover .tag-remove { opacity: 0.7; }
+      .tag-remove:hover { opacity: 1 !important; color: var(--danger); }
+
+      .empty {
+        color: var(--muted);
+        text-align: center;
+        padding: 40px 20px;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🧠 OpenBrain</h1>
+      <input type="search" id="search" placeholder="Search content…" />
+      <span class="count" id="count"></span>
+    </header>
+    <main>
+      <aside>
+        <div class="panel">
+          <h2>Total memories</h2>
+          <div class="bignum" id="total">—</div>
+          <div class="spark" id="spark"></div>
+          <div class="status" style="margin-top:6px">last 30 days (by source date)</div>
+        </div>
+
+        <div class="panel">
+          <h2>By month</h2>
+          <div class="spark" id="month-spark" style="height:60px"></div>
+          <div class="status" id="coverage" style="margin-top:6px"></div>
+        </div>
+
+        <div class="panel">
+          <h2>New memory</h2>
+          <form id="form">
+            <textarea name="content" required placeholder="What should I remember?"></textarea>
+            <select name="memoryType">
+              <option value="">type: (none)</option>
+              <option value="fact">fact</option>
+              <option value="decision">decision</option>
+              <option value="learning">learning</option>
+              <option value="conversation">conversation</option>
+            </select>
+            <input name="tags" placeholder="tags: project, idea" />
+            <button type="submit">Store</button>
+            <div class="status" id="status"></div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>By type</h2>
+          <div id="by-type"></div>
+        </div>
+
+        <div class="panel">
+          <h2>By source</h2>
+          <div id="by-source"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Top tags</h2>
+          <div class="tag-cloud" id="top-tags"></div>
+        </div>
+      </aside>
+
+      <section>
+        <div class="filter-bar" id="filter-bar"></div>
+        <div class="list" id="list"></div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        filters: { tag: null, type: null, source: null, q: null },
+        stats: null,
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const fmt = (iso) => new Date(iso).toLocaleString();
+      const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+      function escape(s) {
+        return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c]);
+      }
+
+      function setFilter(key, value) {
+        state.filters[key] = state.filters[key] === value ? null : value;
+        loadMemories();
+        renderFilterBar();
+        renderStatsHighlights();
+      }
+
+      function clearFilter(key) {
+        state.filters[key] = null;
+        loadMemories();
+        renderFilterBar();
+        renderStatsHighlights();
+      }
+
+      function renderFilterBar() {
+        const bar = $("filter-bar");
+        const pills = [];
+        for (const [k, v] of Object.entries(state.filters)) {
+          if (!v) continue;
+          pills.push(
+            `<span class="pill">${k}: ${escape(v)} <button onclick="clearFilter('${k}')">×</button></span>`
+          );
+        }
+        bar.innerHTML = pills.join("") || '<span style="color:var(--muted);font-size:11px">no filters</span>';
+      }
+
+      async function loadMemories() {
+        const params = new URLSearchParams();
+        for (const [k, v] of Object.entries(state.filters)) if (v) params.set(k, v);
+        params.set("limit", "100");
+        const res = await fetch("/api/memories?" + params);
+        const rows = await res.json();
+        $("count").textContent = `${rows.length} shown`;
+        const list = $("list");
+        if (!rows.length) {
+          list.innerHTML = '<div class="empty">No memories match your filters.</div>';
+          return;
+        }
+        list.innerHTML = rows.map(renderCard).join("");
+      }
+
+      function renderCard(r) {
+        const dateLabel = r.sourceDate
+          ? `<span title="Original source date (imported ${fmt(r.createdAt)})" style="color:var(--accent)">${fmt(r.sourceDate)} ◆</span>`
+          : `<span title="Import date (no original source date)">${fmt(r.createdAt)}</span>`;
+        const meta = [
+          dateLabel,
+          r.source ? `<span class="badge" onclick="setFilter('source','${escape(r.source)}')" style="cursor:pointer">${escape(r.source)}</span>` : "",
+          r.memoryType ? `<span class="badge" onclick="setFilter('type','${escape(r.memoryType)}')" style="cursor:pointer">${escape(r.memoryType)}</span>` : "",
+        ].filter(Boolean).join("");
+        const tagChips = (r.tags || []).map((t) => `
+          <span class="tag" onclick="setFilter('tag','${escape(t)}')">
+            ${escape(t)}<span class="tag-remove" onclick="event.stopPropagation();removeTag('${r.id}','${escape(t)}')">×</span>
+          </span>`).join("");
+        const summary = r.summary ? `<div class="summary">${escape(r.summary)}</div>` : "";
+        return `
+          <article class="card" data-id="${r.id}">
+            <div class="meta">${meta}</div>
+            ${summary}
+            <div class="content">${escape(r.content)}</div>
+            <div class="tags">
+              ${tagChips}
+              <button class="add-tag" onclick="openAddTag('${r.id}', this)">+ tag</button>
+            </div>
+          </article>`;
+      }
+
+      window.openAddTag = (id, btn) => {
+        const input = document.createElement("input");
+        input.className = "tag-input";
+        input.placeholder = "new tag…";
+        btn.replaceWith(input);
+        input.focus();
+        const commit = async () => {
+          const val = input.value.trim();
+          if (val) await addTag(id, val);
+          else loadMemories();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") loadMemories();
+        });
+        input.addEventListener("blur", commit);
+      };
+
+      window.addTag = async (id, tag) => {
+        await fetch(`/api/memories/${id}/tags`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ add: [tag] }),
+        });
+        await Promise.all([loadMemories(), loadStats()]);
+      };
+
+      window.removeTag = async (id, tag) => {
+        await fetch(`/api/memories/${id}/tags`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ remove: [tag] }),
+        });
+        await Promise.all([loadMemories(), loadStats()]);
+      };
+
+      window.setFilter = setFilter;
+      window.clearFilter = clearFilter;
+
+      async function loadStats() {
+        const res = await fetch("/api/stats");
+        state.stats = await res.json();
+        renderStats();
+      }
+
+      function renderStats() {
+        const s = state.stats;
+        $("total").textContent = s.total.toLocaleString();
+
+        // Sparkline: 30 days
+        const days = [];
+        const now = new Date();
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(d.getDate() - i);
+          const key = d.toISOString().slice(0, 10);
+          const row = s.perDay.find((x) => String(x.day).slice(0, 10) === key);
+          days.push({ day: key, count: row ? row.count : 0 });
+        }
+        const max = Math.max(1, ...days.map((d) => d.count));
+        $("spark").innerHTML = days
+          .map((d) => `<div class="bar" title="${fmtDay(d.day)}: ${d.count}" style="height:${(d.count / max) * 100}%"></div>`)
+          .join("");
+
+        // Monthly histogram
+        const months = s.perMonth || [];
+        const mmax = Math.max(1, ...months.map((m) => m.count));
+        $("month-spark").innerHTML = months
+          .map((m) => `<div class="bar" title="${m.month}: ${m.count}" style="height:${(m.count / mmax) * 100}%"></div>`)
+          .join("") || '<div class="status">no data</div>';
+
+        const cov = s.coverage || { with_source_date: 0, total: s.total };
+        const pct = cov.total ? ((cov.with_source_date / cov.total) * 100).toFixed(0) : 0;
+        $("coverage").textContent = `${cov.with_source_date}/${cov.total} have original source date (${pct}%)`;
+
+        $("by-type").innerHTML = s.byType
+          .map((r) => statRow("type", r.key, r.count))
+          .join("") || '<div class="status">no data</div>';
+        $("by-source").innerHTML = s.bySource
+          .map((r) => statRow("source", r.key, r.count))
+          .join("") || '<div class="status">no data</div>';
+        $("top-tags").innerHTML = s.topTags
+          .map((r) => `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`)
+          .join("") || '<div class="status">no tags yet</div>';
+
+        renderStatsHighlights();
+      }
+
+      function statRow(kind, key, count) {
+        const active = state.filters[kind] === key && key !== "(none)";
+        const clickable = key !== "(none)";
+        const handler = clickable ? `onclick="setFilter('${kind}','${escape(key)}')"` : "";
+        return `<div class="stat-row ${active ? "active" : ""}" ${handler}>
+          <span class="key">${escape(key)}</span>
+          <span class="count">${count}</span>
+        </div>`;
+      }
+
+      function renderStatsHighlights() {
+        if (!state.stats) return;
+        // Re-render the two stat panels + tag cloud to update active state
+        $("by-type").innerHTML = state.stats.byType.map((r) => statRow("type", r.key, r.count)).join("");
+        $("by-source").innerHTML = state.stats.bySource.map((r) => statRow("source", r.key, r.count)).join("");
+        $("top-tags").innerHTML = state.stats.topTags
+          .map((r) => `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`)
+          .join("");
+      }
+
+      // Search
+      let searchTimer;
+      $("search").addEventListener("input", (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          state.filters.q = e.target.value.trim() || null;
+          loadMemories();
+          renderFilterBar();
+        }, 200);
+      });
+
+      // Store form
+      $("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const tags = String(fd.get("tags") || "")
+          .split(",").map((t) => t.trim()).filter(Boolean);
+        const body = {
+          content: fd.get("content"),
+          memoryType: fd.get("memoryType") || undefined,
+          tags: tags.length ? tags : undefined,
+        };
+        $("status").textContent = "Storing…";
+        const btn = e.target.querySelector("button[type=submit]");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/memories", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || "failed");
+          e.target.reset();
+          $("status").textContent = "Stored.";
+          await Promise.all([loadMemories(), loadStats()]);
+        } catch (err) {
+          $("status").textContent = `Error: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+          setTimeout(() => ($("status").textContent = ""), 3000);
+        }
+      });
+
+      renderFilterBar();
+      loadMemories();
+      loadStats();
+      setInterval(() => { loadMemories(); loadStats(); }, 20000);
+    </script>
+  </body>
+</html>

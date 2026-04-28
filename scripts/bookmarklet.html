@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OpenBrain Bookmarklet</title>
+  <style>
+    body { font-family: monospace; background: #1a1a2e; color: #0ff; padding: 40px; }
+    a { display: inline-block; margin: 20px 0; padding: 16px 32px; background: #16213e; color: #0ff; border: 2px solid #0ff; border-radius: 8px; text-decoration: none; font-size: 18px; cursor: grab; }
+    a:hover { background: #0a3d62; }
+    p { color: #888; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>OpenBrain Bookmarklet</h1>
+  <p>Drag this to your bookmarks bar:</p>
+  <!-- Change the URL below to match your deployment (localhost, Tailscale hostname, etc.) -->
+  <a href="javascript:void(window.open('http://localhost:6277/api/ingest?url='+encodeURIComponent(location.href),'openbrain','width=420,height=120'))">Save to OpenBrain</a>
+  <p>Click it on any page to save the URL to your memory system.</p>
+  <p>Opens a small popup that auto-closes on success.</p>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[project]
+name = "openbrain-embed"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "mlx>=0.25.0",
+    "numpy>=2.0.0",
+    "mlx-lm>=0.30.7",
+]
+
+[tool.uv]
+dev-dependencies = []

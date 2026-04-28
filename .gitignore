@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+logs/
+embed-service/.venv/
+*.pyc
+__pycache__/
+drizzle/meta/
+.tmp/
+bun.lock
+embed-service/uv.lock
+.claude/
+.playwright-mcp/

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: run scripts/install-services.sh to generate with your actual paths -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbrain.llm</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__VENV__/bin/python</string>
+        <string>-m</string>
+        <string>mlx_lm.server</string>
+        <string>--model</string>
+        <string>mlx-community/Qwen3-30B-A3B-4bit</string>
+        <string>--port</string>
+        <string>8000</string>
+        <string>--max-tokens</string>
+        <string>4096</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__REPO__/logs/llm.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/logs/llm.log</string>
+</dict>
+</plist>

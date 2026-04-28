@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: run scripts/install-services.sh to generate with your actual paths -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbrain.embed</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/embed-service/.venv/bin/python</string>
+        <string>server.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__/embed-service</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__REPO__/logs/embed.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/logs/embed.log</string>
+</dict>
+</plist>
