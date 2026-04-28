@@ -71,6 +71,26 @@ cd embed-service && uv run server.py           # Embedding service (port 6278)
 bun run ui                                     # Web UI (port 6279)
 ```
 
+## First Run: Model Downloads
+
+Models are pulled from Hugging Face Hub the first time each service starts — there's no separate download step. Both services block on startup until the download completes, then come online.
+
+| Model | Size | Used by | Triggered by |
+|-------|------|---------|--------------|
+| `mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ` | ~400 MB | Embedding service (`:6278`) | FastAPI startup |
+| `mlx-community/Qwen3-30B-A3B-4bit` | ~17 GB | LLM enrichment (`:8000`) | `mlx_lm.server` startup |
+
+Both are public repos — no Hugging Face token required. Files cache to `~/.cache/huggingface/hub/` and subsequent starts run fully offline.
+
+If you installed the launchd services, the first-run download happens silently in the background. Watch progress with:
+
+```bash
+tail -f logs/embed.log   # embedding model (~30s on fast connection)
+tail -f logs/llm.log     # 17 GB LLM (~10+ minutes)
+```
+
+`bun run health` will report the LLM service as down until its download finishes. Interrupted downloads resume on the next start.
+
 ## MCP Client Configuration
 
 OpenBrain exposes both HTTP and stdio MCP transports. Configure your client to point at whichever it supports.
