@@ -1,6 +1,6 @@
 # OpenBrain
 
-Fully local AI memory for Apple Silicon. Gives Claude Code (or any MCP client) persistent semantic memory with vector search — no cloud APIs required.
+Fully local AI memory for Apple Silicon. Gives any MCP client persistent semantic memory with vector search — no cloud APIs required.
 
 Everything runs on your Mac: embeddings via MLX on Metal GPU, enrichment via a local LLM, storage in PostgreSQL with pgvector.
 
@@ -8,31 +8,9 @@ Built on the [OB1](https://github.com/NateBJones-Projects/OB1) architecture by [
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌──────────────────────────────┐
-│  Claude Code /   │     │        OpenBrain MCP          │
-│  any MCP client  │────▶│    Bun server · port 6277     │
-└─────────────────┘     └──────┬───────┬───────┬────────┘
-                               │       │       │
-                    ┌──────────┘       │       └──────────┐
-                    ▼                  ▼                   ▼
-          ┌─────────────────┐ ┌──────────────┐  ┌─────────────────┐
-          │   PostgreSQL 17  │ │ Embed Service │  │   mlx-lm LLM    │
-          │   + pgvector     │ │ MLX · :6278   │  │   MLX · :8000    │
-          │   port 5432      │ │ (embeddings)  │  │   (enrichment)   │
-          └─────────────────┘ └──────────────┘  └─────────────────┘
-                    ▲
-                    │
-          ┌─────────────────┐
-          │   Redis (cache)  │
-          │   port 6379      │
-          └─────────────────┘
+![OpenBrain Architecture](assets/architecture.png)
 
-          ┌─────────────────┐
-          │    Web UI        │
-          │  Bun · port 6279 │
-          └─────────────────┘
-```
+A Bun MCP server brokers requests from any MCP client to PostgreSQL+pgvector for storage, a local MLX embedding service for vectorization, and a local mlx-lm server for enrichment. Redis caches embeddings and search results. A separate Bun web UI reads directly from PostgreSQL. Everything runs on-device — no cloud APIs in the data path.
 
 ## Requirements
 
@@ -90,9 +68,11 @@ cd embed-service && uv run server.py           # Embedding service (port 6278)
 bun run ui                                     # Web UI (port 6279)
 ```
 
-## Claude Code Configuration
+## MCP Client Configuration
 
-Add to your project's `.mcp.json`:
+OpenBrain exposes both HTTP and stdio MCP transports. Configure your client to point at whichever it supports.
+
+**HTTP transport** (recommended — one shared server for all clients):
 
 ```json
 {
@@ -105,7 +85,7 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-Or use stdio transport in `~/.claude.json`:
+**stdio transport** (for clients that spawn the server as a subprocess):
 
 ```json
 {
@@ -118,6 +98,8 @@ Or use stdio transport in `~/.claude.json`:
   }
 }
 ```
+
+The exact config-file location depends on your client (e.g. `.mcp.json` in a project root, or a global config under your home directory).
 
 ## MCP Tools
 
