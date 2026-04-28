@@ -55,8 +55,8 @@ brew services start redis
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/YOUR_USERNAME/openbrain.git
-cd openbrain
+git clone https://github.com/sajennings79/apple-silicon-openbrain.git
+cd apple-silicon-openbrain
 
 # 2. Configure environment
 cp .env.example .env
