@@ -21,13 +21,19 @@ A Bun MCP server brokers requests from any MCP client to PostgreSQL+pgvector for
 - [PostgreSQL 17](https://www.postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) extension
 - [Redis](https://redis.io/) (optional but recommended)
 
-Install prerequisites with Homebrew:
+Install prerequisites:
 
 ```bash
-brew install postgresql@17 pgvector redis bun uv
+# PostgreSQL, pgvector, Redis, and uv via Homebrew
+brew install postgresql@17 pgvector redis uv
 brew services start postgresql@17
 brew services start redis
+
+# Bun via its official installer (no Homebrew formula)
+curl -fsSL https://bun.sh/install | bash
 ```
+
+After installing Bun, restart your shell (or `source ~/.zshrc`) so the `bun` binary is on your `PATH`.
 
 ## Quick Start
 
@@ -40,20 +46,17 @@ cd apple-silicon-openbrain
 cp .env.example .env
 # Edit .env if needed (defaults work for local setup)
 
-# 3. Run setup (creates database, installs dependencies)
+# 3. Run setup (creates database, installs Bun + Python deps)
 bash scripts/setup.sh
 
-# 4. Set up the Python embedding service
-cd embed-service && uv sync && cd ..
-
-# 5. Create a Python venv for the LLM enrichment server
+# 4. Create a Python venv for the LLM enrichment server
 python3 -m venv ~/.mlx-venv
 ~/.mlx-venv/bin/pip install mlx-lm
 
-# 6. Start all services (installs as launchd daemons)
+# 5. Start all services (installs as launchd daemons)
 bash scripts/install-services.sh
 
-# 7. Verify everything is running
+# 6. Verify everything is running
 bun run health
 ```
 
