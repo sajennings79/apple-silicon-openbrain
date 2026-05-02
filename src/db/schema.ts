@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, real } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { vector } from "drizzle-orm/pg-core";
 
@@ -29,5 +29,20 @@ export const memories = pgTable(
     ),
     index("idx_memories_source_date").on(table.sourceDate.desc()),
     index("idx_memories_source_sourceid").on(table.source, table.sourceId),
+  ]
+);
+
+export const memoryLinks = pgTable(
+  "memory_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceMemoryId: uuid("source_memory_id").notNull().references(() => memories.id),
+    targetMemoryId: uuid("target_memory_id").notNull().references(() => memories.id),
+    similarity: real("similarity").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_memory_links_source").on(table.sourceMemoryId),
+    index("idx_memory_links_target").on(table.targetMemoryId),
   ]
 );

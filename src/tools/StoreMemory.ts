@@ -4,6 +4,7 @@ import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
 import { getCachedEmbedding, setCachedEmbedding } from "../services/cache.js";
 import { enrichMemory } from "../services/enrichment.js";
+import { linkRelatedMemories } from "../services/linking.js";
 
 export const StoreMemorySchema = z.object({
   content: z.string().describe("The text content to store as a memory"),
@@ -52,6 +53,9 @@ export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: bool
   if (enrich) {
     enrichMemory(row.id, input.content).catch(() => {});
   }
+
+  // Fire-and-forget cross-memory linking
+  linkRelatedMemories(row.id).catch(() => {});
 
   return { id: row.id, createdAt: row.createdAt };
 }

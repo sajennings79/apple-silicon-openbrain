@@ -71,7 +71,7 @@ export async function searchMemory(input: SearchMemoryInput) {
     ? await pg.unsafe(query, values as any[])
     : await pg.unsafe(query);
 
-  return rows.map((r: any) => ({
+  const results = rows.map((r: any) => ({
     id: r.id,
     content: r.content,
     summary: r.summary,
@@ -83,5 +83,32 @@ export async function searchMemory(input: SearchMemoryInput) {
     similarity: Number(r.similarity),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    linkedMemories: [] as { id: string; similarity: number }[],
   }));
+
+  // Fetch linked memories for search results
+  if (results.length > 0) {
+    try {
+      const ids = results.map((r: any) => r.id);
+      const links = await pg.unsafe(`
+        SELECT source_memory_id, target_memory_id, similarity
+        FROM memory_links
+        WHERE source_memory_id = ANY($1) OR target_memory_id = ANY($1)
+      `, [ids]);
+
+      for (const link of links) {
+        for (const result of results) {
+          if (link.source_memory_id === result.id && !ids.includes(link.target_memory_id)) {
+            result.linkedMemories.push({ id: link.target_memory_id, similarity: Number(link.similarity) });
+          } else if (link.target_memory_id === result.id && !ids.includes(link.source_memory_id)) {
+            result.linkedMemories.push({ id: link.source_memory_id, similarity: Number(link.similarity) });
+          }
+        }
+      }
+    } catch {
+      // Links table may not exist yet — graceful degradation
+    }
+  }
+
+  return results;
 }
