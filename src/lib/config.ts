@@ -8,4 +8,5 @@ export const config = {
   mcpHost: process.env.MCP_HOST ?? "0.0.0.0",
   authToken: process.env.AUTH_TOKEN ?? "",
   firecrawlApiKey: process.env.FIRECRAWL_API_KEY ?? "",
+  obscuraPath: process.env.OBSCURA_PATH ?? "obscura",
 } as const;
