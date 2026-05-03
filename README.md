@@ -20,6 +20,8 @@ A Bun MCP server brokers requests from any MCP client to PostgreSQL+pgvector for
 - Python 3.13+ with [uv](https://docs.astral.sh/uv/)
 - [PostgreSQL 17](https://www.postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) extension
 - [Redis](https://redis.io/) (optional but recommended)
+- [Obscura](https://github.com/h4ckf0r0day/obscura) (optional — local web scraping; falls back to Firecrawl)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) (optional — YouTube transcript extraction)
 
 Install prerequisites:
 
@@ -128,7 +130,7 @@ The exact config-file location depends on your client (e.g. `.mcp.json` in a pro
 
 | Tool | Description |
 |------|-------------|
-| **StoreMemory** | Store text with automatic embedding and LLM enrichment (summary, tags, entities) |
+| **StoreMemory** | Store text with automatic embedding, LLM enrichment (summary, tags, entities), and cross-memory linking |
 | **SearchMemory** | Semantic vector search with optional filters (type, source, tags, date range) |
 | **RecallMemory** | Retrieve a specific memory by UUID |
 | **ListMemories** | Paginated list with filters |
@@ -164,7 +166,7 @@ Save web pages and YouTube transcripts directly to memory using the bookmarklet.
 2. Drag the bookmarklet link to your bookmarks bar
 3. Click it on any page to save the content to OpenBrain
 
-**Web pages** are scraped via [Firecrawl](https://firecrawl.dev) (requires `FIRECRAWL_API_KEY` in `.env`). The free tier works well for personal use.
+**Web pages** are scraped locally via [Obscura](https://github.com/h4ckf0r0day/obscura) (a Rust headless browser — fast, free, no dependencies). If Obscura fails, falls back to [Firecrawl](https://firecrawl.dev) (requires `FIRECRAWL_API_KEY` in `.env`).
 
 **YouTube URLs** are handled locally via `yt-dlp` (install: `brew install yt-dlp`). Transcripts are extracted and stored with video metadata.
 
@@ -176,7 +178,7 @@ You don't need all services running to get started:
 2. **Add enrichment**: Start the mlx-lm server — memories get auto-enriched with summaries and tags
 3. **Add caching**: Start Redis — faster repeated searches and embedding lookups
 4. **Add UI**: Start the web UI — browse and manage memories visually
-5. **Add ingestion**: Set up Firecrawl API key and bookmarklet — save web content from your browser
+5. **Add ingestion**: Install Obscura and/or set up Firecrawl API key, plus the bookmarklet — save web content from your browser
 
 To skip enrichment entirely (e.g., while setting up), set `DISABLE_ENRICHMENT=true` in `.env`.
 
