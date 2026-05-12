@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Template for an OpenBrain agent launchd job.
+
+Replace placeholders before installing:
+  __AGENT_NAME__   Short identifier, e.g. "newsletter-digest". Used in Label.
+  __REPO__         Absolute path to openbrain repo, e.g. /Users/scott/Developer/openbrain
+  __BUN__          Absolute path to bun binary, e.g. /Users/scott/.bun/bin/bun
+  __PROMPT__       Absolute path to the prompt .md file
+  __HOUR__         0-23, hour of day to run (StartCalendarInterval)
+  __MINUTE__       0-59, minute of hour to run
+
+The Phase 5 Swift app generates and installs this from agents/run-agent.sh +
+the user's chosen schedule. Hand-edit only for testing.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbrain.agent.__AGENT_NAME__</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BUN__</string>
+        <string>run</string>
+        <string>__REPO__/agents/run-agent.ts</string>
+        <string>__PROMPT__</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>__HOUR__</integer>
+        <key>Minute</key>
+        <integer>__MINUTE__</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>__REPO__/logs/agent-__AGENT_NAME__.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/logs/agent-__AGENT_NAME__.log</string>
+</dict>
+</plist>

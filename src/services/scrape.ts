@@ -92,17 +92,24 @@ async function scrapeWithFirecrawl(url: string): Promise<ScrapeResult> {
 }
 
 export async function scrapeUrl(url: string): Promise<ScrapeResult> {
-  // Try Obscura first (local, free, fast)
+  // Try Obscura first (local, free, fast). This is the only scraper enabled by default.
   try {
     const result = await scrapeWithObscura(url);
     console.log(`[scrape] Obscura succeeded for ${url} (${result.markdown.length} chars)`);
     return result;
-  } catch (err) {
-    console.log(`[scrape] Obscura failed for ${url}, falling back to Firecrawl: ${err instanceof Error ? err.message : err}`);
-  }
+  } catch (obscuraErr) {
+    const obscuraMsg = obscuraErr instanceof Error ? obscuraErr.message : String(obscuraErr);
 
-  // Fall back to Firecrawl (cloud, paid, reliable)
-  const result = await scrapeWithFirecrawl(url);
-  console.log(`[scrape] Firecrawl fallback succeeded for ${url} (${result.markdown.length} chars)`);
-  return result;
+    // Firecrawl fallback is opt-in to keep the default install fully local / API-key-free.
+    if (!config.firecrawlEnabled || !config.firecrawlApiKey) {
+      throw new Error(
+        `Obscura failed (${obscuraMsg}). Firecrawl fallback disabled — set ENABLE_FIRECRAWL=true and FIRECRAWL_API_KEY in .env to enable cloud fallback.`,
+      );
+    }
+
+    console.log(`[scrape] Obscura failed for ${url}, falling back to Firecrawl: ${obscuraMsg}`);
+    const result = await scrapeWithFirecrawl(url);
+    console.log(`[scrape] Firecrawl fallback succeeded for ${url} (${result.markdown.length} chars)`);
+    return result;
+  }
 }

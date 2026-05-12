@@ -1,45 +1,8 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createServer } from "./server.js";
 import { config } from "./lib/config.js";
-import { db } from "./db/client.js";
-import { memories } from "./db/schema.js";
-import { eq, and, isNull } from "drizzle-orm";
-import { scrapeUrl } from "./services/scrape.js";
-import { isYouTubeUrl, fetchYouTubeTranscript } from "./services/youtube.js";
-import { storeMemory } from "./tools/StoreMemory.js";
-
-async function ingestUrl(targetUrl: string): Promise<{ status: "created" | "duplicate"; id: string; title: string }> {
-  // Dedup: check if already ingested (check both "web" and "youtube" sources)
-  const existing = await db
-    .select({ id: memories.id, summary: memories.summary })
-    .from(memories)
-    .where(and(eq(memories.sourceId, targetUrl), isNull(memories.deletedAt)))
-    .limit(1);
-
-  if (existing.length > 0) {
-    return { status: "duplicate", id: existing[0].id, title: existing[0].summary ?? targetUrl };
-  }
-
-  if (isYouTubeUrl(targetUrl)) {
-    const yt = await fetchYouTubeTranscript(targetUrl);
-    const result = await storeMemory({
-      content: yt.transcript,
-      source: "youtube",
-      sourceId: targetUrl,
-      memoryType: "fact",
-    });
-    return { status: "created", id: result.id, title: yt.title };
-  }
-
-  const scraped = await scrapeUrl(targetUrl);
-  const result = await storeMemory({
-    content: scraped.markdown,
-    source: "web",
-    sourceId: targetUrl,
-    memoryType: "fact",
-  });
-  return { status: "created", id: result.id, title: scraped.title };
-}
+import { ingestUrl } from "./services/ingest.js";
+import { handleSourcesRoute } from "./api/sources.js";
 
 // Session management: map session IDs to their transport+server
 const sessions = new Map<
@@ -179,6 +142,12 @@ const app = Bun.serve({
         service: "openbrain",
         sessions: sessions.size,
       });
+    }
+
+    // Sources CRUD + sync (Phase 0). Returns null if URL doesn't match.
+    if (url.pathname.startsWith("/api/sources")) {
+      const sourcesResponse = await handleSourcesRoute(req, url);
+      if (sourcesResponse) return sourcesResponse;
     }
 
     return new Response("Not Found", { status: 404 });

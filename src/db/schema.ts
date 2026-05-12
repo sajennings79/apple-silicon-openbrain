@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, index, real } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, real, integer, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { vector } from "drizzle-orm/pg-core";
 
@@ -44,5 +44,29 @@ export const memoryLinks = pgTable(
   (table) => [
     index("idx_memory_links_source").on(table.sourceMemoryId),
     index("idx_memory_links_target").on(table.targetMemoryId),
+  ]
+);
+
+// Recurring ingestion sources: mail accounts, RSS feeds, watched web pages.
+// The Mac app's scheduler periodically POSTs /api/sources/poll-due, which
+// fans out to per-kind handlers (rss.ts, mail.ts, ...) for any rows whose
+// lastSyncedAt + intervalSeconds is in the past and `enabled = true`.
+export const sources = pgTable(
+  "sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull(), // 'mail' | 'rss' | 'webpage'
+    name: text("name").notNull(),
+    config: jsonb("config").notNull().default({}),
+    intervalSeconds: integer("interval_seconds").notNull().default(900),
+    enabled: boolean("enabled").notNull().default(true),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_sources_kind").on(table.kind),
+    index("idx_sources_enabled_synced").on(table.enabled, table.lastSyncedAt),
   ]
 );
