@@ -62,10 +62,15 @@ CREATE INDEX IF NOT EXISTS idx_memories_source_sourceid ON memories (source, sou
 SQL
 echo "  ✓ Schema applied"
 
-# Bun dependencies
-echo "→ Installing Bun dependencies..."
+# Node dependencies via pnpm
+echo "→ Installing dependencies (pnpm)..."
 cd "$REPO_DIR"
-BUN_TMPDIR="$REPO_DIR/.tmp" bun install --silent
+if ! command -v pnpm &>/dev/null; then
+  echo "  ✗ pnpm not found. Install with: brew install pnpm"
+  echo "    (also requires Node 22+; nvm install --lts && nvm alias default lts/*)"
+  exit 1
+fi
+pnpm install --silent
 echo "  ✓ Dependencies installed"
 
 # Python embedding service

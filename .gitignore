@@ -11,3 +11,8 @@ bun.lock
 embed-service/uv.lock
 .claude/
 .playwright-mcp/
+
+# Swift Mac app build artifacts
+apps/mac/.build/
+apps/mac/.swiftpm/
+apps/mac/Package.resolved

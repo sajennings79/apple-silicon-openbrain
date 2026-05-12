@@ -2,6 +2,10 @@
   "name": "openbrain",
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@11.0.4",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "bun run src/index.ts",
     "ui": "bun run ui/server.ts",
@@ -12,6 +16,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "drizzle-orm": "^0.44.2",
+    "fast-xml-parser": "^4.5.0",
     "ioredis": "^5.6.1",
     "pgvector": "^0.2.0",
     "postgres": "^3.4.7",

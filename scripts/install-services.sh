@@ -39,11 +39,21 @@ install_plist() {
     return 1
   fi
 
+  # If $dst is a stale symlink (e.g. pointing at the repo template), `>` would
+  # follow it and overwrite the template. Remove first so we always write a real
+  # file with placeholders substituted.
+  rm -f "$dst"
+  GOG_PW="${GOG_KEYRING_PASSWORD:-}"
+  if [ -z "$GOG_PW" ] && [ -f "$REPO_DIR/.env" ]; then
+    GOG_PW="$(grep '^GOG_KEYRING_PASSWORD=' "$REPO_DIR/.env" | cut -d= -f2-)"
+  fi
+
   sed \
     -e "s|__HOME__|$HOME|g" \
     -e "s|__REPO__|$REPO_DIR|g" \
     -e "s|__BUN__|$BUN_BIN|g" \
     -e "s|__VENV__|${MLX_VENV:-__VENV__}|g" \
+    -e "s|__GOG_KEYRING_PASSWORD__|$GOG_PW|g" \
     "$src" > "$dst"
 
   # Unload if already loaded, then load
