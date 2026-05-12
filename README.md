@@ -15,7 +15,7 @@ A Bun MCP server brokers requests from any MCP client to PostgreSQL+pgvector for
 ## Requirements
 
 - **Apple Silicon Mac** (M1/M2/M3/M4) — required for MLX GPU inference
-- **32 GB RAM recommended** for the default model (`Qwen3.6-35B-A3B-4bit`, ~17.5 GB; MoE with only 3B active params — runs fast)
+- **16 GB RAM minimum** for the default model (`Qwen3-8B-4bit`, ~4.5 GB); 32 GB+ lets you run larger enrichment models
 - macOS 14+
 - [Node.js](https://nodejs.org) 22+ (LTS v24 recommended) and [pnpm](https://pnpm.io) 11+
 - [Bun](https://bun.sh) 1.1+ as the runtime (we use `pnpm` to install deps; `bun` to run them)
@@ -98,7 +98,7 @@ Or start services manually:
 bun run dev                                    # MCP server (port 6277)
 cd embed-service && uv run server.py           # Embedding service (port 6278)
 ~/.mlx-venv/bin/python -m mlx_lm.server \
-  --model mlx-community/Qwen3.6-35B-A3B-4bit \
+  --model mlx-community/Qwen3-8B-4bit \
   --port 8000 --max-tokens 4096               # LLM enrichment (port 8000)
 bun run ui                                     # Web UI (port 6279)
 ```
@@ -110,14 +110,14 @@ Models are pulled from Hugging Face Hub the first time each service starts — t
 | Model | Size | Used by | Triggered by |
 |-------|------|---------|--------------|
 | `mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ` | ~400 MB | Embedding service (`:6278`) | FastAPI startup |
-| `mlx-community/Qwen3.6-35B-A3B-4bit` (default) | ~17.5 GB | LLM enrichment (`:8000`) | `mlx_lm.server` startup |
+| `mlx-community/Qwen3-8B-4bit` (default) | ~4.5 GB | LLM enrichment (`:8000`) | `mlx_lm.server` startup |
 
 The default LLM is sized for 16 GB RAM systems. To trade RAM for quality, override `LLM_MODEL` in `.env` (and the matching `--model` arg in `~/Library/LaunchAgents/com.openbrain.llm.plist`):
 
 | RAM | Suggested model | Disk |
 |-----|-----------------|------|
-| 16 GB | `mlx-community/Qwen3.5-9B-OptiQ-4bit` | ~5 GB |
-| 32 GB (default) | `mlx-community/Qwen3.6-35B-A3B-4bit` | ~17.5 GB |
+| 16 GB (default) | `mlx-community/Qwen3-8B-4bit` | ~4.5 GB |
+| 32 GB | `mlx-community/Qwen3.6-35B-A3B-4bit` | ~17.5 GB |
 | 64 GB+ | `mlx-community/Qwen3.5-122B-A10B-4bit` | ~60 GB |
 
 All models are public repos — no Hugging Face token required. Files cache to `~/.cache/huggingface/hub/` and subsequent starts run fully offline.
@@ -181,7 +181,7 @@ The exact config-file location depends on your client (e.g. `.mcp.json` in a pro
 |---------|------|---------|
 | MCP Server | 6277 | MCP protocol + URL ingestion API |
 | Embedding Service | 6278 | Local MLX embeddings (Qwen3-Embedding-0.6B, 1024-dim) |
-| LLM Server | 8000 | Local MLX enrichment (Qwen3.6-35B-A3B by default) |
+| LLM Server | 8000 | Local MLX enrichment (Qwen3-8B by default) |
 | Web UI | 6279 | Dashboard for browsing and searching memories |
 | PostgreSQL | 5432 | Memory storage with pgvector |
 | Redis | 6379 | Embedding + search result caching |

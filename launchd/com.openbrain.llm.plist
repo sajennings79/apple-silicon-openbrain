@@ -11,7 +11,7 @@
         <string>-m</string>
         <string>mlx_lm.server</string>
         <string>--model</string>
-        <string>mlx-community/Qwen3.6-35B-A3B-4bit</string>
+        <string>mlx-community/Qwen3-8B-4bit</string>
         <string>--port</string>
         <string>8000</string>
         <string>--max-tokens</string>

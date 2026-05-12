@@ -48,7 +48,7 @@ interface Memory {
 
 const UI_BASE = process.env.OPENBRAIN_UI_URL ?? "http://127.0.0.1:6279";
 const LLM_URL = process.env.LLM_URL ?? "http://127.0.0.1:8000";
-const DEFAULT_MODEL = process.env.LLM_MODEL ?? "mlx-community/Qwen3.6-35B-A3B-4bit";
+const DEFAULT_MODEL = process.env.LLM_MODEL ?? "mlx-community/Qwen3-8B-4bit";
 
 function splitFrontmatter(raw: string): { config: AgentConfig; body: string } {
   const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
