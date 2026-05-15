@@ -6,52 +6,10 @@ export interface ScrapeResult {
   title: string;
   markdown: string;
   url: string;
-  source: "obscura" | "firecrawl";
+  source: "firecrawl";
 }
 
-async function scrapeWithObscura(url: string): Promise<ScrapeResult> {
-  const obscuraPath = config.obscuraPath;
-
-  // Get text content and title in parallel
-  const [textProc, titleProc] = await Promise.all([
-    Bun.spawn([obscuraPath, "fetch", url, "--dump", "text", "--quiet", "--stealth"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    }),
-    Bun.spawn([obscuraPath, "fetch", url, "--eval", "document.title", "--quiet", "--stealth"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    }),
-  ]);
-
-  const [textResult, titleResult] = await Promise.all([
-    textProc.exited,
-    titleProc.exited,
-  ]);
-
-  if (textResult !== 0) {
-    const stderr = await new Response(textProc.stderr).text();
-    throw new Error(`Obscura exited with code ${textResult}: ${stderr.slice(0, 200)}`);
-  }
-
-  const text = await new Response(textProc.stdout).text();
-  const title = titleResult === 0
-    ? (await new Response(titleProc.stdout).text()).trim()
-    : url;
-
-  if (!text.trim()) {
-    throw new Error("Obscura returned empty content");
-  }
-
-  return {
-    title: title || url,
-    markdown: text.trim(),
-    url,
-    source: "obscura",
-  };
-}
-
-async function scrapeWithFirecrawl(url: string): Promise<ScrapeResult> {
+export async function scrapeUrl(url: string): Promise<ScrapeResult> {
   if (!config.firecrawlApiKey) {
     throw new Error("FIRECRAWL_API_KEY is not set");
   }
@@ -83,33 +41,12 @@ async function scrapeWithFirecrawl(url: string): Promise<ScrapeResult> {
     throw new Error(`Firecrawl scrape failed: ${data.error ?? "unknown error"}`);
   }
 
-  return {
+  const result: ScrapeResult = {
     title: data.data?.metadata?.title ?? url,
     markdown: data.data?.markdown ?? "",
     url: data.data?.metadata?.sourceURL ?? url,
     source: "firecrawl",
   };
-}
-
-export async function scrapeUrl(url: string): Promise<ScrapeResult> {
-  // Try Obscura first (local, free, fast). This is the only scraper enabled by default.
-  try {
-    const result = await scrapeWithObscura(url);
-    console.log(`[scrape] Obscura succeeded for ${url} (${result.markdown.length} chars)`);
-    return result;
-  } catch (obscuraErr) {
-    const obscuraMsg = obscuraErr instanceof Error ? obscuraErr.message : String(obscuraErr);
-
-    // Firecrawl fallback is opt-in to keep the default install fully local / API-key-free.
-    if (!config.firecrawlEnabled || !config.firecrawlApiKey) {
-      throw new Error(
-        `Obscura failed (${obscuraMsg}). Firecrawl fallback disabled — set ENABLE_FIRECRAWL=true and FIRECRAWL_API_KEY in .env to enable cloud fallback.`,
-      );
-    }
-
-    console.log(`[scrape] Obscura failed for ${url}, falling back to Firecrawl: ${obscuraMsg}`);
-    const result = await scrapeWithFirecrawl(url);
-    console.log(`[scrape] Firecrawl fallback succeeded for ${url} (${result.markdown.length} chars)`);
-    return result;
-  }
+  console.log(`[scrape] Firecrawl succeeded for ${url} (${result.markdown.length} chars)`);
+  return result;
 }
