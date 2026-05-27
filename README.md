@@ -22,17 +22,18 @@ A Bun MCP server brokers requests from any MCP client to PostgreSQL+pgvector for
 - Python 3.13+ with [uv](https://docs.astral.sh/uv/)
 - [PostgreSQL 17](https://www.postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) extension
 - [Redis](https://redis.io/) (optional but recommended)
-- [Obscura](https://github.com/h4ckf0r0day/obscura) — local web scraping (the only scraper enabled by default)
+- [Firecrawl](https://firecrawl.dev) API key — used for all web page scraping
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (optional — YouTube transcript extraction)
 
-### Optional: cloud fallback
+### Firecrawl
 
-[Firecrawl](https://firecrawl.dev) is supported as a cloud fallback for sites that Obscura can't reach (paywalls, JS-heavy SPAs, etc.) but is **off by default** to keep the install fully local. To enable, set in `.env`:
+[Firecrawl](https://firecrawl.dev) handles all web-page scraping (markdown extraction, JS rendering, etc.). It's a cloud service; set your key in `.env`:
 
 ```
-ENABLE_FIRECRAWL=true
 FIRECRAWL_API_KEY=fc-...
 ```
+
+Without a key, `POST /api/ingest` for web URLs will return an error.
 
 ### Quick install (recommended)
 
@@ -204,7 +205,7 @@ Save web pages and YouTube transcripts directly to memory using the bookmarklet.
 2. Drag the bookmarklet link to your bookmarks bar
 3. Click it on any page to save the content to OpenBrain
 
-**Web pages** are scraped locally via [Obscura](https://github.com/h4ckf0r0day/obscura) (a Rust headless browser — fast, free, no dependencies). If Obscura fails, the request errors by default. To enable [Firecrawl](https://firecrawl.dev) as a cloud fallback, set `ENABLE_FIRECRAWL=true` and `FIRECRAWL_API_KEY` in `.env`.
+**Web pages** are scraped via [Firecrawl](https://firecrawl.dev) (markdown extraction, JS rendering). Set `FIRECRAWL_API_KEY` in `.env` — without it, web ingestion will error.
 
 **YouTube URLs** are handled locally via `yt-dlp` (install: `brew install yt-dlp`). Transcripts are extracted and stored with video metadata.
 
@@ -216,7 +217,7 @@ You don't need all services running to get started:
 2. **Add enrichment**: Start the mlx-lm server — memories get auto-enriched with summaries and tags
 3. **Add caching**: Start Redis — faster repeated searches and embedding lookups
 4. **Add UI**: Start the web UI — browse and manage memories visually
-5. **Add ingestion**: Install Obscura, plus the bookmarklet — save web content from your browser. Optionally also set `ENABLE_FIRECRAWL=true` and `FIRECRAWL_API_KEY` for cloud fallback.
+5. **Add ingestion**: Set `FIRECRAWL_API_KEY` in `.env` and install the bookmarklet — save web content from your browser.
 
 To skip enrichment entirely (e.g., while setting up), set `DISABLE_ENRICHMENT=true` in `.env`.
 

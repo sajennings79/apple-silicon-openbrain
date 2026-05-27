@@ -7,7 +7,5 @@ export const config = {
   mcpPort: Number(process.env.MCP_PORT ?? 6277),
   mcpHost: process.env.MCP_HOST ?? "0.0.0.0",
   authToken: process.env.AUTH_TOKEN ?? "",
-  firecrawlEnabled: process.env.ENABLE_FIRECRAWL === "true",
   firecrawlApiKey: process.env.FIRECRAWL_API_KEY ?? "",
-  obscuraPath: process.env.OBSCURA_PATH ?? "obscura",
 } as const;
