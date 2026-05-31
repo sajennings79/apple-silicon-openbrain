@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: run scripts/install-services.sh to generate with your actual paths -->
+<!-- Headless source-sync trigger: POSTs /api/sources/poll-due on a timer so
+     ingestion does not depend on the OpenBrain.app menubar app being open.
+     Safe alongside the app: poll-due has an in-flight guard + concurrency cap. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbrain.poll</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/curl</string>
+        <string>-s</string>
+        <string>-X</string>
+        <string>POST</string>
+        <string>http://localhost:6277/api/sources/poll-due</string>
+        <string>-H</string>
+        <string>Content-Type: application/json</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__REPO__/logs/poll.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/logs/poll.log</string>
+</dict>
+</plist>
