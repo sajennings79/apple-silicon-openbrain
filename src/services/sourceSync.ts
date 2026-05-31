@@ -151,7 +151,24 @@ export async function syncDueSources(): Promise<SyncReport[]> {
 
     const reports: SyncReport[] = [];
     for (const { id } of due) {
-      reports.push(await syncSource(id));
+      try {
+        reports.push(await syncSource(id));
+      } catch (err) {
+        // syncSource throws before its own try/catch if the source vanished
+        // between the claim above and the lookup (e.g. deleted mid-run). Isolate
+        // it so one bad source doesn't abort the rest of the claimed batch.
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[poll-due] source ${id} failed before report creation: ${message}`);
+        reports.push({
+          sourceId: id,
+          kind: "unknown",
+          ok: false,
+          ingested: 0,
+          duplicates: 0,
+          error: message,
+          elapsedMs: 0,
+        });
+      }
     }
     return reports;
   } finally {
