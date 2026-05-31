@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, index, real, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, uniqueIndex, real, integer, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { vector } from "drizzle-orm/pg-core";
 
@@ -28,7 +28,12 @@ export const memories = pgTable(
       sql`to_tsvector('english', ${table.content})`
     ),
     index("idx_memories_source_date").on(table.sourceDate.desc()),
-    index("idx_memories_source_sourceid").on(table.source, table.sourceId),
+    // Partial UNIQUE: enforces dedup for externally-identified memories (URLs,
+    // mail message ids) while leaving freeform NULL-source_id memories alone.
+    // Excludes soft-deleted rows so a deleted URL can be re-ingested later.
+    uniqueIndex("idx_memories_source_sourceid_unique")
+      .on(table.source, table.sourceId)
+      .where(sql`${table.sourceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ]
 );
 

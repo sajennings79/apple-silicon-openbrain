@@ -122,21 +122,39 @@ export async function syncSource(sourceId: string): Promise<SyncReport> {
   }
 }
 
-export async function syncDueSources(): Promise<SyncReport[]> {
-  // A source is due when it's enabled AND (last_synced_at IS NULL OR last_synced_at + interval < now)
-  const due = await db
-    .select({ id: sources.id })
-    .from(sources)
-    .where(
-      and(
-        eq(sources.enabled, true),
-        sql`(${sources.lastSyncedAt} IS NULL OR ${sources.lastSyncedAt} + (${sources.intervalSeconds} * interval '1 second') < NOW())`,
-      ),
-    );
+// In-process guard: a slow sync run (scraping many links) can outlast the poll
+// interval. Without this, the next tick would start a second concurrent run.
+let syncInProgress = false;
 
-  const reports: SyncReport[] = [];
-  for (const { id } of due) {
-    reports.push(await syncSource(id));
+export async function syncDueSources(): Promise<SyncReport[]> {
+  if (syncInProgress) {
+    console.log("[poll-due] previous sync still running, skipping this tick");
+    return [];
   }
-  return reports;
+  syncInProgress = true;
+  try {
+    // Atomically CLAIM due sources by stamping last_synced_at up front, in a
+    // single UPDATE ... RETURNING. This is the real fix for the duplication bug:
+    // a source is only "due" when last_synced_at + interval < now, so claiming it
+    // immediately means an overlapping run (or a failed scrape) won't re-pick it
+    // until a full interval has elapsed — instead of re-scraping every tick.
+    const due = await db
+      .update(sources)
+      .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(sources.enabled, true),
+          sql`(${sources.lastSyncedAt} IS NULL OR ${sources.lastSyncedAt} + (${sources.intervalSeconds} * interval '1 second') < NOW())`,
+        ),
+      )
+      .returning({ id: sources.id });
+
+    const reports: SyncReport[] = [];
+    for (const { id } of due) {
+      reports.push(await syncSource(id));
+    }
+    return reports;
+  } finally {
+    syncInProgress = false;
+  }
 }
