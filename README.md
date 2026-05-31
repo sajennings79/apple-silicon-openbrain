@@ -118,7 +118,7 @@ The default LLM is sized for 16 GB RAM systems. To trade RAM for quality, overri
 | RAM | Suggested model | Disk |
 |-----|-----------------|------|
 | 16 GB (default) | `mlx-community/Qwen3-8B-4bit` | ~4.5 GB |
-| 32 GB | `mlx-community/Qwen3.6-35B-A3B-4bit` | ~17.5 GB |
+| 32 GB | `mlx-community/Qwen3.6-27B-4bit` (dense) or `mlx-community/Qwen3.6-35B-A3B-4bit` (MoE) | ~17 GB |
 | 64 GB+ | `mlx-community/Qwen3.5-122B-A10B-4bit` | ~60 GB |
 
 All models are public repos — no Hugging Face token required. Files cache to `~/.cache/huggingface/hub/` and subsequent starts run fully offline.
