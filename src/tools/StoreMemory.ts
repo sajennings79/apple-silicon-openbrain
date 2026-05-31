@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
@@ -47,7 +48,29 @@ export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: bool
       tags: input.tags ?? [],
       entities: input.entities ?? {},
     })
+    // Backstop against the SELECT-then-INSERT dedup race: if a concurrent run
+    // already inserted this (source, source_id), the partial unique index makes
+    // this a no-op instead of a duplicate row.
+    .onConflictDoNothing()
     .returning({ id: memories.id, createdAt: memories.createdAt });
+
+  // No row returned => a concurrent insert won the race. Return the existing row
+  // and skip enrichment/linking, which already ran (or will run) for the winner.
+  if (!row) {
+    const [existing] = await db
+      .select({ id: memories.id, createdAt: memories.createdAt })
+      .from(memories)
+      .where(
+        and(
+          eq(memories.source, input.source ?? null),
+          eq(memories.sourceId, input.sourceId ?? null),
+          isNull(memories.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!existing) throw new Error("insert conflicted but no existing row found");
+    return { id: existing.id, createdAt: existing.createdAt };
+  }
 
   // Fire-and-forget enrichment via mlx-lm (skipped during bulk imports)
   if (enrich) {

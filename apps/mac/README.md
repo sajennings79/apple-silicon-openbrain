@@ -46,7 +46,7 @@ The app is a thin client over the localhost MCP server (`6277`) and UI server (`
 |---|---|
 | List/create/update/delete sources | `http://127.0.0.1:6277/api/sources` |
 | Sync a source now | `POST /api/sources/:id/sync` |
-| Scheduler tick (every 5 min) | `POST /api/sources/poll-due` |
+| Scheduler tick (hourly) | `POST /api/sources/poll-due` |
 | Recent memories for the popover | `GET http://127.0.0.1:6279/api/memories?limit=5` |
 | Health probes (every 30s) | `/health` (mcp/embed/ui), `/v1/models` (llm) |
 

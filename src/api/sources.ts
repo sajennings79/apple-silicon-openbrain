@@ -59,8 +59,20 @@ export async function handleSourcesRoute(req: Request, url: URL): Promise<Respon
   }
 
   if (pathname === "/api/sources/poll-due" && req.method === "POST") {
-    const reports = await syncDueSources();
-    return json({ ok: true, count: reports.length, reports });
+    // Fire-and-forget: respond immediately, sync runs in background.
+    // Syncing all due sources can take minutes (scraping + embedding);
+    // awaiting it causes HTTP clients with short timeouts to bail and retry.
+    syncDueSources()
+      .then((reports) => {
+        const failed = reports.filter((r) => !r.ok);
+        if (failed.length > 0) {
+          console.warn(`[poll-due] ${failed.length} source(s) failed:`, failed.map((r) => `${r.sourceId}: ${r.error}`).join(", "));
+        } else {
+          console.log(`[poll-due] synced ${reports.length} source(s), ${reports.reduce((n, r) => n + r.ingested, 0)} ingested`);
+        }
+      })
+      .catch((err) => console.error("[poll-due] unexpected error:", err));
+    return json({ ok: true, status: "sync started" }, 202);
   }
 
   // /api/sources/:id and /api/sources/:id/sync

@@ -9,7 +9,7 @@ final class Scheduler {
     private var timer: Timer?
     private let interval: TimeInterval
 
-    init(state: AppState, interval: TimeInterval = 5 * 60) {
+    init(state: AppState, interval: TimeInterval = 60 * 60) {
         self.state = state
         self.interval = interval
     }

@@ -237,7 +237,7 @@ curl -X POST http://localhost:6277/api/sources/<id>/sync
 curl -X POST http://localhost:6277/api/sources/poll-due
 ```
 
-The Mac app (Phase 3+) drives `poll-due` from a 5-minute timer and exposes a UI for source CRUD. Until then, talk to the REST API directly.
+The Mac app (Phase 3+) drives `poll-due` from an hourly timer and exposes a UI for source CRUD. Until then, talk to the REST API directly. (The timer is just a heartbeat — each source's own `intervalSeconds` decides when it's actually due.)
 
 ### Mail sources via `gog`
 
