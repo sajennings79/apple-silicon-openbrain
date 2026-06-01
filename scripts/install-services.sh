@@ -23,6 +23,19 @@ fi
 
 mkdir -p "$LOG_DIR" "$LAUNCH_DIR"
 
+# openbrain owns local inference: it runs its own mlx_lm server on :8000.
+# A legacy system-wide daemon (com.lcars.mlx-server) historically also bound
+# :8000; if it is still loaded, the two KeepAlive services fight over the port
+# and one crash-loops. Detect it and tell the operator to retire it.
+if launchctl print "system/com.lcars.mlx-server" >/dev/null 2>&1 \
+   || [ -f /Library/LaunchDaemons/com.lcars.mlx-server.plist ]; then
+  echo "⚠ Conflicting MLX server detected: com.lcars.mlx-server owns :8000."
+  echo "  openbrain now owns local inference. Retire the legacy daemon:"
+  echo "    sudo launchctl bootout system/com.lcars.mlx-server"
+  echo "    sudo rm /Library/LaunchDaemons/com.lcars.mlx-server.plist"
+  echo ""
+fi
+
 echo "=== Installing OpenBrain launchd services ==="
 echo "  Repo: $REPO_DIR"
 echo "  Bun:  $BUN_BIN"
@@ -48,11 +61,21 @@ install_plist() {
     GOG_PW="$(grep '^GOG_KEYRING_PASSWORD=' "$REPO_DIR/.env" | cut -d= -f2-)"
   fi
 
+  # Model served by com.openbrain.llm comes from .env (LLM_MODEL), so a re-run
+  # of this installer preserves the machine's chosen model instead of resetting
+  # it to a hardcoded default. Falls back to the 16GB-safe default.
+  LLM_MODEL_VAL="${LLM_MODEL:-}"
+  if [ -z "$LLM_MODEL_VAL" ] && [ -f "$REPO_DIR/.env" ]; then
+    LLM_MODEL_VAL="$(grep '^LLM_MODEL=' "$REPO_DIR/.env" | cut -d= -f2-)"
+  fi
+  LLM_MODEL_VAL="${LLM_MODEL_VAL:-mlx-community/Qwen3-8B-4bit}"
+
   sed \
     -e "s|__HOME__|$HOME|g" \
     -e "s|__REPO__|$REPO_DIR|g" \
     -e "s|__BUN__|$BUN_BIN|g" \
     -e "s|__VENV__|${MLX_VENV:-__VENV__}|g" \
+    -e "s|__LLM_MODEL__|$LLM_MODEL_VAL|g" \
     -e "s|__GOG_KEYRING_PASSWORD__|$GOG_PW|g" \
     "$src" > "$dst"
 
