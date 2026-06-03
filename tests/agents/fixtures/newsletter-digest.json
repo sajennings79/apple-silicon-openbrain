@@ -1,0 +1,38 @@
+{
+  "_comment": "Recorded eval fixture for agents/prompts/newsletter-digest.md. The `memories` array mocks fetchMemories() (so openbrain need not be running). The optional `llmResponse` field, if present, mocks callLLM() for a fully offline replay; omit it to eval the current prompt against this frozen input using a live mlx-lm server only. `search` echoes the prompt frontmatter for reference; the runner ignores it when fixtures are injected.",
+  "search": {
+    "source": "mail",
+    "tag": "Newsletter",
+    "sinceDays": 1,
+    "limit": 30
+  },
+  "memories": [
+    {
+      "id": "fixt-newsletter-001",
+      "content": "# Stratechery — The On-Device Inference Squeeze\n\nApple announced a 3B-parameter on-device model shipping in iOS 19 this fall. Ben Thompson argues this is a structural threat to cloud-inference margins: once high-frequency, low-complexity requests run locally for free, the hyperscalers lose the volume that subsidizes their GPU fleets.\n\nThe piece walks through unit economics for a hypothetical autocomplete feature and concludes the breakeven for keeping inference in the cloud has moved sharply. Full analysis: https://stratechery.com/2026/on-device-inference-squeeze/\n\n---\nSponsored by Acme Vector DB — ship RAG in an afternoon. https://acme.example/ad\n\nIn this issue: On-device inference · Reader mailbag · Housekeeping",
+      "summary": "Stratechery: Apple's 3B on-device model in iOS 19 threatens cloud-inference margins by removing the high-volume requests that subsidize GPU fleets.",
+      "source": "mail",
+      "memoryType": "fact",
+      "tags": ["Newsletter", "AI", "apple"],
+      "effectiveDate": "2026-06-01T13:20:00.000Z"
+    },
+    {
+      "id": "fixt-newsletter-002",
+      "content": "# The Daily Upside — Markets Brief\n\nThe 10-year Treasury yield closed at 4.62%, up 11 bps, after a hotter-than-expected May CPI print of 3.4% year over year. Rate-cut odds for the July FOMC meeting fell from 64% to 38% in fed-funds futures.\n\nNvidia slipped 2.1% on a report that a large hyperscaler is trialing in-house inference silicon for a subset of workloads — a data point that rhymes with the on-device shift covered elsewhere this week.\n\nNo links in this edition; charts available in the web version.",
+      "summary": "Daily Upside: May CPI came in hot at 3.4%, 10-year yield up to 4.62%, July rate-cut odds dropped to 38%; Nvidia fell 2.1% on hyperscaler in-house silicon report.",
+      "source": "mail",
+      "memoryType": "fact",
+      "tags": ["Newsletter", "Markets", "macro"],
+      "effectiveDate": "2026-06-01T11:05:00.000Z"
+    },
+    {
+      "id": "fixt-newsletter-003",
+      "content": "# Console — Dev Tooling Weekly\n\nBun 1.3 shipped with a stable built-in test runner and a `bun pm audit` command. The release notes highlight a 30% cold-start improvement for HTTP servers. Release notes: https://bun.sh/blog/bun-v1.3\n\nAlso noted: Postgres 18 beta lands asynchronous I/O for sequential scans, and the pgvector maintainers tagged 0.9.0 with iterative HNSW scans for better recall at low ef_search. pgvector 0.9.0: https://github.com/pgvector/pgvector/releases/tag/v0.9.0",
+      "summary": "Console: Bun 1.3 ships a stable test runner and pm audit with 30% faster cold start; Postgres 18 beta adds async I/O; pgvector 0.9.0 adds iterative HNSW scans.",
+      "source": "mail",
+      "memoryType": "fact",
+      "tags": ["Newsletter", "Tooling", "devtools"],
+      "effectiveDate": "2026-06-01T09:40:00.000Z"
+    }
+  ]
+}

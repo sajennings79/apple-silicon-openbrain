@@ -11,7 +11,7 @@ The runner is **fully local**. It queries OpenBrain via REST, calls the local ml
 {
   "name": "my-agent",
   "description": "Plain English description shown in the GUI.",
-  "noThink": true,                              // optional — prefixes /no_think for Qwen3 models. default true
+  "noThink": true,                              // optional — disables model "thinking" via enable_thinking=false (Qwen3.x are reasoning models). default true
   "maxTokens": 2048,                            // optional — completion cap. default 4096
   "model": "mlx-community/Qwen3-8B-4bit",       // optional — override default model
   "search": {
@@ -60,6 +60,33 @@ When `output` is set, the runner stores the LLM's response as a new memory and e
 3. Refine the prompt body. The runner inlines `{{memories}}` verbatim, so think about how the model will read your formatting.
 4. Add the `output` block when you're happy with the result.
 5. Schedule it via the OpenBrain Mac app (Phase 5) or by writing a launchd plist using `agents/launchd/com.openbrain.agent.template.plist` as the starting point.
+
+## Running evals
+
+Prompts can be evaluated against **recorded fixtures** instead of live services,
+so you can iterate on prompt quality without openbrain (and optionally without
+mlx-lm) running. Fixtures and rubrics live under `tests/agents/`:
+
+```
+tests/agents/
+  fixtures/<agent>.json       recorded memories (mock fetchMemories) + optional
+                              llmResponse (mock callLLM)
+  rubrics/<agent>.rubric.md   structural checks a passing output must satisfy
+```
+
+The intended interface — once the runner grows a `--fixtures` flag — is:
+
+```bash
+bun run agents/run-agent.ts agents/prompts/newsletter-digest.md \
+  --fixtures tests/agents/fixtures/newsletter-digest.json
+```
+
+With `llmResponse` present in the fixture this runs fully offline; without it,
+only mlx-lm is needed and the eval exercises the *current prompt* against frozen
+input. The harness itself is not built yet — see `tests/agents/README.md` for the
+fixture format and the `newsletter-digest` example. Prompts can also declare a
+`"minMemories"` field in frontmatter to fail fast (emit the empty-case sentinel)
+rather than synthesize a digest from near-empty input.
 
 ## Why JSON frontmatter, not YAML?
 

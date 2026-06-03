@@ -32,6 +32,7 @@ interface AgentConfig {
   model?: string;
   noThink?: boolean;
   maxTokens?: number;
+  minMemories?: number;
   search?: SearchSpec;
   output?: OutputSpec;
 }
@@ -44,6 +45,31 @@ interface Memory {
   memoryType: string | null;
   tags: string[] | null;
   effectiveDate: string;
+}
+
+// A recorded eval fixture. `memories` mocks fetchMemories() (so openbrain need
+// not be running); an optional `llmResponse` mocks callLLM() for fully offline
+// replay. See tests/agents/README.md.
+interface Fixture {
+  search?: SearchSpec;
+  memories: Memory[];
+  llmResponse?: string;
+}
+
+function parseArgs(argv: string[]): { promptPath?: string; fixturesPath?: string } {
+  let promptPath: string | undefined;
+  let fixturesPath: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--fixtures") {
+      fixturesPath = argv[++i];
+    } else if (a.startsWith("--fixtures=")) {
+      fixturesPath = a.slice("--fixtures=".length);
+    } else if (!promptPath && !a.startsWith("-")) {
+      promptPath = a;
+    }
+  }
+  return { promptPath, fixturesPath };
 }
 
 const UI_BASE = process.env.OPENBRAIN_UI_URL ?? "http://127.0.0.1:6279";
@@ -97,21 +123,43 @@ function renderMemoriesBlock(memories: Memory[]): string {
 }
 
 async function callLLM(prompt: string, config: AgentConfig): Promise<string> {
-  const messages = [{ role: "user", content: config.noThink === false ? prompt : `/no_think\n${prompt}` }];
+  // Qwen3.x are reasoning models. mlx-lm returns the chain-of-thought in a
+  // separate `reasoning` field and the actual answer in `content`. The legacy
+  // `/no_think` soft switch is a no-op on Qwen3.6 — the model reasons anyway and,
+  // if it exhausts max_tokens mid-thought, returns NO `content` at all. The
+  // reliable switch is `chat_template_kwargs.enable_thinking`, which every Qwen3.x
+  // chat template honors. Default (noThink !== false) disables thinking.
+  const body: Record<string, unknown> = {
+    model: config.model ?? DEFAULT_MODEL,
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: config.maxTokens ?? 4096,
+    stream: false,
+  };
+  if (config.noThink !== false) {
+    body.chat_template_kwargs = { enable_thinking: false };
+  }
   const res = await fetch(`${LLM_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: config.model ?? DEFAULT_MODEL,
-      messages,
-      max_tokens: config.maxTokens ?? 4096,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`LLM call failed: ${res.status} ${await res.text()}`);
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const content = data.choices?.[0]?.message?.content ?? "";
-  return content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string }; finish_reason?: string }[];
+  };
+  // Strip inline <think> blocks too, for older Qwen3 gens that emit them.
+  const content = (data.choices?.[0]?.message?.content ?? "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .trim();
+  if (!content) {
+    const fr = data.choices?.[0]?.finish_reason ?? "unknown";
+    throw new Error(
+      `LLM returned empty content (finish_reason=${fr}). A reasoning model likely ` +
+        `spent the whole ${body.max_tokens}-token budget thinking. Raise maxTokens, ` +
+        `or keep noThink enabled so thinking is disabled.`,
+    );
+  }
+  return content;
 }
 
 async function storeBack(result: string, output: OutputSpec, agentName: string): Promise<{ id: string }> {
@@ -132,24 +180,51 @@ async function storeBack(result: string, output: OutputSpec, agentName: string):
 }
 
 async function main() {
-  const promptPath = process.argv[2];
+  const { promptPath, fixturesPath } = parseArgs(process.argv.slice(2));
   if (!promptPath) {
-    console.error("Usage: bun run agents/run-agent.ts <path-to-prompt.md>");
+    console.error("Usage: bun run agents/run-agent.ts <path-to-prompt.md> [--fixtures <path>]");
     process.exit(1);
   }
 
   const raw = await Bun.file(promptPath).text();
   const { config, body } = splitFrontmatter(raw);
 
-  const memories = await fetchMemories(config.search ?? {});
+  // When --fixtures is given, replay recorded input instead of hitting live
+  // services: fixture.memories stands in for fetchMemories(), and (if present)
+  // fixture.llmResponse stands in for callLLM(). Eval runs never store back.
+  const fixture: Fixture | null = fixturesPath
+    ? (JSON.parse(await Bun.file(fixturesPath).text()) as Fixture)
+    : null;
+
+  const memories = fixture ? fixture.memories : await fetchMemories(config.search ?? {});
+
+  // Fail fast rather than synthesize from near-empty input.
+  const minMemories = config.minMemories ?? 0;
+  if (memories.length < minMemories) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          agent: config.name,
+          skipped: true,
+          reason: `below minMemories threshold (${memories.length} < ${minMemories})`,
+          memoriesUsed: memories.length,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   const memoriesBlock = renderMemoriesBlock(memories);
   const rendered = body.replace(/\{\{\s*memories\s*\}\}/g, memoriesBlock);
 
   const startedAt = Date.now();
-  const result = await callLLM(rendered, config);
+  const result = fixture?.llmResponse != null ? fixture.llmResponse : await callLLM(rendered, config);
   const elapsedMs = Date.now() - startedAt;
 
-  if (config.output) {
+  if (config.output && !fixture) {
     const stored = await storeBack(result, config.output, config.name);
     console.log(
       JSON.stringify(
