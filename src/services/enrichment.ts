@@ -5,8 +5,7 @@ import { config } from "../lib/config.js";
 
 const SYSTEM_PROMPT = `You are a metadata extraction service. You ALWAYS respond with valid JSON only, no thinking, no explanation.`
 
-const ENRICHMENT_PROMPT = `/no_think
-Extract metadata from the following text. Return ONLY a JSON object with these keys:
+const ENRICHMENT_PROMPT = `Extract metadata from the following text. Return ONLY a JSON object with these keys:
 - "summary": 1-2 sentence summary
 - "tags": array of 2-5 lowercase topic tags (no spaces)
 - "entities": object with keys "person", "org", "tech", "concept", "location" mapping to arrays of names
@@ -46,6 +45,10 @@ export async function enrichMemory(memoryId: string, content: string): Promise<v
     ],
     temperature: 0.1,
     max_tokens: 1024,
+    // Qwen3.x are reasoning models. /no_think is a no-op; this is the switch
+    // that actually suppresses the chain-of-thought. Without it, reasoning
+    // exhausts the 1024-token budget and content comes back empty.
+    chat_template_kwargs: { enable_thinking: false },
   });
 
   try {
