@@ -41,7 +41,15 @@ function peopleOf(entities: unknown): string[] {
   return Array.isArray(e.person) ? (e.person as string[]) : [];
 }
 
-const ID_RE = "[0-9a-f-]{36}";
+// Strict UUID shape so malformed IDs return a clean 404 from the router instead
+// of reaching recallMemory() and failing as a DB-level uuid cast error.
+const ID_RE = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
+
+/** Parse a query param to a finite number, falling back when absent/invalid. */
+const numberParam = (raw: string | null, fallback: number) => {
+  const n = raw == null ? fallback : Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+};
 
 const PORT = Number(process.env.UI_PORT ?? 6279);
 const indexHtml = await Bun.file(new URL("./index.html", import.meta.url)).text();
@@ -64,7 +72,7 @@ Bun.serve({
     }
 
     if (req.method === "GET" && pathname === "/api/memories") {
-      const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 500);
+      const limit = Math.min(Math.max(numberParam(url.searchParams.get("limit"), 100), 1), 500);
       const tag = url.searchParams.get("tag");
       const type = url.searchParams.get("type");
       const source = url.searchParams.get("source");
@@ -180,7 +188,7 @@ Bun.serve({
     // memory that a human hasn't yet decided on. This is OB1's "low quality_score"
     // list, expressed in our trust ladder.
     if (req.method === "GET" && pathname === "/api/audit") {
-      const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 500);
+      const limit = Math.min(Math.max(numberParam(url.searchParams.get("limit"), 100), 1), 500);
       const rows = await pg`
         SELECT id, content, summary, source, memory_type AS "memoryType", tags, entities,
                created_at AS "createdAt", source_date AS "sourceDate",
@@ -203,7 +211,7 @@ Bun.serve({
 
     // GET /api/duplicates?threshold=0.9 — exact (fingerprint) groups + near (vector) pairs.
     if (req.method === "GET" && pathname === "/api/duplicates") {
-      const threshold = Math.min(Math.max(Number(url.searchParams.get("threshold") ?? 0.9), 0), 1);
+      const threshold = Math.min(Math.max(numberParam(url.searchParams.get("threshold"), 0.9), 0), 1);
       const groupLimit = 50;
 
       // Exact duplicates: rows sharing a content_fingerprint (advisory dedup key).

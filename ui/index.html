@@ -168,8 +168,10 @@
         border-radius: 8px;
         padding: 14px 16px;
       }
+      a.card { color: inherit; text-decoration: none; display: block; }
       .card.click { cursor: pointer; }
       .card.click:hover { border-color: var(--accent-dim); }
+      .card.click:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .card .meta {
         display: flex;
         gap: 8px;
@@ -194,6 +196,7 @@
       .badge.warn { background: rgba(231, 195, 107, 0.16); color: var(--warn); }
       .badge.bad { background: rgba(255, 122, 122, 0.16); color: var(--danger); }
       .badge.sim { background: var(--accent-dim); color: var(--accent); font-variant-numeric: tabular-nums; }
+      .badge.click { cursor: pointer; }
       .add-tag {
         background: transparent;
         border: 1px dashed var(--border);
@@ -253,6 +256,11 @@
           "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
         })[c]);
       }
+      // Read an error message out of a failed Response without throwing.
+      async function errMsg(res) {
+        try { return (await res.json()).error || `HTTP ${res.status}`; }
+        catch { return `HTTP ${res.status}`; }
+      }
 
       // ---- Governance / trust-ladder badges (shared across views) ----
       function govBadges(m) {
@@ -278,6 +286,39 @@
       }
 
       // =====================================================================
+      // Event delegation
+      // Dynamic, user-controlled values (tags, source, type) are carried in
+      // data-* attributes and read via element.dataset — never interpolated
+      // into inline JS handlers — so quotes in stored content can't break out
+      // into executable script (stored-XSS safe).
+      // =====================================================================
+      function handleAct(t) {
+        const d = t.dataset;
+        switch (d.act) {
+          case "filter": setFilter(d.key, d.val); break;
+          case "clearfilter": clearFilter(d.key); break;
+          case "removetag": removeTag(d.id, d.tag); break;
+          case "addtag": openAddTag(d.id, t); break;
+          case "detail-removetag": detailRemoveTag(d.id, d.tag); break;
+          case "detail-addtag": openDetailAddTag(d.id, t); break;
+          case "review": review(d.id, d.action); break;
+          case "resolvedup": resolveDup(d.keep, d.supersede); break;
+        }
+      }
+      document.addEventListener("click", (e) => {
+        const act = e.target.closest("[data-act]");
+        if (act) { e.preventDefault(); e.stopPropagation(); handleAct(act); return; }
+        const nav = e.target.closest("[data-nav]");
+        if (nav) location.hash = nav.dataset.nav;
+      });
+      // Keyboard activation for card "links" (role=link + tabindex).
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const el = e.target;
+        if (el.matches && el.matches("[data-nav]")) { e.preventDefault(); location.hash = el.dataset.nav; }
+      });
+
+      // =====================================================================
       // Router
       // =====================================================================
       function parseHash() {
@@ -285,18 +326,16 @@
         const [name, param] = h.split("/");
         return { name: name || "", param: param || "" };
       }
-
       function setActiveNav(name) {
         for (const a of document.querySelectorAll("#nav a"))
           a.classList.toggle("active", a.dataset.route === name);
       }
-
       async function route() {
         const { name, param } = parseHash();
         setActiveNav(name);
         if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
         $("count").textContent = "";
-        if (name === "" ) return renderDashboard();
+        if (name === "") return renderDashboard();
         if (name === "memory") return renderDetail(param);
         if (name === "search") return renderSearch();
         if (name === "audit") return renderAudit();
@@ -306,7 +345,7 @@
       window.addEventListener("hashchange", route);
 
       // =====================================================================
-      // Dashboard (original behaviour, preserved)
+      // Dashboard
       // =====================================================================
       function renderDashboard() {
         $("view").innerHTML = `
@@ -381,7 +420,7 @@
               headers: { "content-type": "application/json" },
               body: JSON.stringify(body),
             });
-            if (!res.ok) throw new Error((await res.json()).error || "failed");
+            if (!res.ok) throw new Error(await errMsg(res));
             e.target.reset();
             $("status").textContent = "Stored.";
             await Promise.all([loadMemories(), loadStats()]);
@@ -415,8 +454,6 @@
         renderFilterBar();
         renderStatsHighlights();
       }
-      window.setFilter = setFilter;
-      window.clearFilter = clearFilter;
 
       function renderFilterBar() {
         const bar = $("filter-bar");
@@ -424,7 +461,7 @@
         const pills = [];
         for (const [k, v] of Object.entries(state.filters)) {
           if (!v) continue;
-          pills.push(`<span class="pill">${k}: ${escape(v)} <button onclick="clearFilter('${k}')">×</button></span>`);
+          pills.push(`<span class="pill">${escape(k)}: ${escape(v)} <button data-act="clearfilter" data-key="${escape(k)}">×</button></span>`);
         }
         bar.innerHTML = pills.join("") || '<span style="color:var(--muted);font-size:11px">no filters</span>';
       }
@@ -435,44 +472,51 @@
         const params = new URLSearchParams();
         for (const [k, v] of Object.entries(state.filters)) if (v) params.set(k, v);
         params.set("limit", "100");
-        const res = await fetch("/api/memories?" + params);
-        const rows = await res.json();
-        if ($("count")) $("count").textContent = `${rows.length} shown`;
-        list.innerHTML = rows.length
-          ? rows.map(renderCard).join("")
-          : '<div class="empty">No memories match your filters.</div>';
+        try {
+          const res = await fetch("/api/memories?" + params);
+          if (!res.ok) throw new Error(await errMsg(res));
+          const rows = await res.json();
+          if ($("count")) $("count").textContent = `${rows.length} shown`;
+          list.innerHTML = rows.length
+            ? rows.map(renderCard).join("")
+            : '<div class="empty">No memories match your filters.</div>';
+        } catch (err) {
+          list.innerHTML = `<div class="empty">Failed to load memories: ${escape(err.message)}</div>`;
+        }
       }
 
       function renderCard(r) {
         const dateLabel = r.sourceDate
-          ? `<span title="Original source date (imported ${fmt(r.createdAt)})" style="color:var(--accent)">${fmt(r.sourceDate)} ◆</span>`
-          : `<span title="Import date">${fmt(r.createdAt)}</span>`;
+          ? `<span title="Original source date (imported ${escape(fmt(r.createdAt))})" style="color:var(--accent)">${escape(fmt(r.sourceDate))} ◆</span>`
+          : `<span title="Import date">${escape(fmt(r.createdAt))}</span>`;
         const meta = [
           dateLabel,
-          r.source ? `<span class="badge" onclick="event.stopPropagation();setFilter('source','${escape(r.source)}')" style="cursor:pointer">${escape(r.source)}</span>` : "",
-          r.memoryType ? `<span class="badge" onclick="event.stopPropagation();setFilter('type','${escape(r.memoryType)}')" style="cursor:pointer">${escape(r.memoryType)}</span>` : "",
+          r.source ? `<span class="badge click" data-act="filter" data-key="source" data-val="${escape(r.source)}">${escape(r.source)}</span>` : "",
+          r.memoryType ? `<span class="badge click" data-act="filter" data-key="type" data-val="${escape(r.memoryType)}">${escape(r.memoryType)}</span>` : "",
         ].filter(Boolean).join("");
         const tagChips = (r.tags || []).map((t) => `
-          <span class="tag" onclick="event.stopPropagation();setFilter('tag','${escape(t)}')">
-            ${escape(t)}<span class="tag-remove" onclick="event.stopPropagation();removeTag('${r.id}','${escape(t)}')">×</span>
+          <span class="tag" data-act="filter" data-key="tag" data-val="${escape(t)}">
+            ${escape(t)}<span class="tag-remove" data-act="removetag" data-id="${escape(r.id)}" data-tag="${escape(t)}">×</span>
           </span>`).join("");
         const summary = r.summary ? `<div class="summary">${escape(r.summary)}</div>` : "";
         return `
-          <article class="card click" data-id="${r.id}" onclick="location.hash='#/memory/${r.id}'">
+          <article class="card click" data-id="${escape(r.id)}" data-nav="#/memory/${escape(r.id)}" role="link" tabindex="0">
             <div class="meta">${meta}</div>
             ${summary}
             <div class="content">${escape(r.content)}</div>
             <div class="tags">
               ${tagChips}
-              <button class="add-tag" onclick="event.stopPropagation();openAddTag('${r.id}', this)">+ tag</button>
+              <button class="add-tag" data-act="addtag" data-id="${escape(r.id)}">+ tag</button>
             </div>
           </article>`;
       }
 
-      window.openAddTag = (id, btn) => {
+      function openAddTag(id, btn) {
         const input = document.createElement("input");
         input.className = "tag-input";
         input.placeholder = "new tag…";
+        // Keep clicks inside the input from bubbling to the card's nav handler.
+        input.addEventListener("click", (e) => e.stopPropagation());
         btn.replaceWith(input);
         input.focus();
         const commit = async () => {
@@ -485,27 +529,33 @@
           if (e.key === "Escape") loadMemories();
         });
         input.addEventListener("blur", commit);
-      };
-      window.addTag = async (id, tag) => {
+      }
+      async function addTag(id, tag) {
         await fetch(`/api/memories/${id}/tags`, {
           method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ add: [tag] }),
         });
         await Promise.all([loadMemories(), loadStats()]);
-      };
-      window.removeTag = async (id, tag) => {
+      }
+      async function removeTag(id, tag) {
         await fetch(`/api/memories/${id}/tags`, {
           method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ remove: [tag] }),
         });
         await Promise.all([loadMemories(), loadStats()]);
-      };
+      }
 
       async function loadStats() {
         if (!$("total")) return;
-        const res = await fetch("/api/stats");
-        state.stats = await res.json();
-        renderStats();
+        try {
+          const res = await fetch("/api/stats");
+          if (!res.ok) throw new Error(await errMsg(res));
+          state.stats = await res.json();
+          renderStats();
+        } catch {
+          const t = $("total"); if (t) t.textContent = "—";
+          const c = $("coverage"); if (c) c.textContent = "stats unavailable";
+        }
       }
       function renderStats() {
         const s = state.stats;
@@ -533,37 +583,41 @@
       function statRow(kind, key, count) {
         const active = state.filters[kind] === key && key !== "(none)";
         const clickable = key !== "(none)";
-        const handler = clickable ? `onclick="setFilter('${kind}','${escape(key)}')"` : "";
-        return `<div class="stat-row ${active ? "active" : ""}" ${handler}>
+        const attrs = clickable ? `data-act="filter" data-key="${escape(kind)}" data-val="${escape(key)}"` : "";
+        return `<div class="stat-row ${active ? "active" : ""}" ${attrs}>
           <span class="key">${escape(key)}</span><span class="count">${count}</span></div>`;
+      }
+      function tagCloudChip(tag, count) {
+        return `<span class="tag ${state.filters.tag === tag ? "active" : ""}" data-act="filter" data-key="tag" data-val="${escape(tag)}">${escape(tag)}<span class="n">${count}</span></span>`;
       }
       function renderStatsHighlights() {
         if (!state.stats || !$("by-type")) return;
         $("by-type").innerHTML = state.stats.byType.map((r) => statRow("type", r.key, r.count)).join("") || '<div class="status">no data</div>';
         $("by-source").innerHTML = state.stats.bySource.map((r) => statRow("source", r.key, r.count)).join("") || '<div class="status">no data</div>';
-        $("top-tags").innerHTML = state.stats.topTags.map((r) =>
-          `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`
-        ).join("") || '<div class="status">no tags yet</div>';
+        $("top-tags").innerHTML = state.stats.topTags.map((r) => tagCloudChip(r.tag, r.count)).join("") || '<div class="status">no tags yet</div>';
       }
 
       // =====================================================================
-      // Detail (#/memory/:id) — metadata + inline edit + connections
+      // Detail (#/memory/:id)
       // =====================================================================
       async function renderDetail(id) {
         $("view").innerHTML = `<div class="wide"><div class="empty">Loading…</div></div>`;
-        const res = await fetch(`/api/memories/${id}`);
-        if (!res.ok) {
-          $("view").innerHTML = `<div class="wide"><a class="back" href="#/">← back</a><div class="empty">Memory not found.</div></div>`;
+        let m;
+        try {
+          const res = await fetch(`/api/memories/${encodeURIComponent(id)}`);
+          if (!res.ok) throw new Error(await errMsg(res));
+          m = await res.json();
+        } catch (err) {
+          $("view").innerHTML = `<div class="wide"><a class="back" href="#/">← back</a><div class="empty">Could not load memory: ${escape(err.message)}</div></div>`;
           return;
         }
-        const m = await res.json();
         const tagChips = (m.tags || []).map((t) =>
-          `<span class="tag">${escape(t)}<span class="tag-remove" onclick="detailRemoveTag('${m.id}','${escape(t)}')">×</span></span>`
+          `<span class="tag">${escape(t)}<span class="tag-remove" data-act="detail-removetag" data-id="${escape(m.id)}" data-tag="${escape(t)}">×</span></span>`
         ).join("");
         const people = (m.people || []).map((p) => `<span class="badge">${escape(p)}</span>`).join(" ");
         const links = (m.linkedMemories || []).map((l) =>
-          `<a class="card click" style="display:block;text-decoration:none;color:inherit" href="#/memory/${l.id}">
-             <div class="meta"><span class="badge sim">${pct(l.similarity)}</span>${l.memoryType ? `<span class="badge">${escape(l.memoryType)}</span>` : ""}<span>${fmt(l.createdAt)}</span></div>
+          `<a class="card click" style="display:block" href="#/memory/${escape(l.id)}">
+             <div class="meta"><span class="badge sim">${pct(l.similarity)}</span>${l.memoryType ? `<span class="badge">${escape(l.memoryType)}</span>` : ""}<span>${escape(fmt(l.createdAt))}</span></div>
              <div class="content" style="max-height:80px">${escape(l.content)}</div>
            </a>`
         ).join("");
@@ -576,13 +630,13 @@
             <a class="back" href="#/">← back to dashboard</a>
             <h2 class="view-title">Memory detail</h2>
             <div class="panel" style="margin-bottom:16px">
-              <div class="meta card" style="border:0;padding:0;margin-bottom:12px">
-                <span>${m.sourceDate ? fmt(m.sourceDate) + " ◆" : fmt(m.createdAt)}</span>
+              <div class="meta" style="margin-bottom:12px">
+                <span>${m.sourceDate ? escape(fmt(m.sourceDate)) + " ◆" : escape(fmt(m.createdAt))}</span>
                 ${m.source ? `<span class="badge">${escape(m.source)}</span>` : ""}
                 ${govBadges(m)}
               </div>
               <label>Content</label>
-              <textarea id="d-content" style="min-height:160px">${escape(m.content)}</textarea>
+              <textarea id="d-content" style="min-height:160px"></textarea>
               <div class="row" style="margin-top:8px">
                 <select id="d-type" style="width:auto">${typeOptions}</select>
                 <button class="sm" id="d-save">Save</button>
@@ -591,18 +645,18 @@
               ${m.summary ? `<div class="summary" style="margin-top:12px">${escape(m.summary)}</div>` : ""}
               <div class="tags" id="d-tags" style="margin-top:12px">
                 ${tagChips}
-                <button class="add-tag" onclick="openDetailAddTag('${m.id}', this)">+ tag</button>
+                <button class="add-tag" data-act="detail-addtag" data-id="${escape(m.id)}">+ tag</button>
               </div>
             </div>
             <div class="panel" style="margin-bottom:16px">
               <h2>Metadata</h2>
               <dl class="dl">
-                <dt>id</dt><dd style="font-family:ui-monospace,monospace">${m.id}</dd>
-                <dt>created</dt><dd>${fmt(m.createdAt)}</dd>
-                <dt>updated</dt><dd>${fmt(m.updatedAt)}</dd>
+                <dt>id</dt><dd style="font-family:ui-monospace,monospace">${escape(m.id)}</dd>
+                <dt>created</dt><dd>${escape(fmt(m.createdAt))}</dd>
+                <dt>updated</dt><dd>${escape(fmt(m.updatedAt))}</dd>
                 <dt>can instruct</dt><dd>${m.canUseAsInstruction ? "yes" : "no"}</dd>
                 <dt>people</dt><dd>${people || '<span class="muted">none</span>'}</dd>
-                ${m.supersedes ? `<dt>supersedes</dt><dd><a href="#/memory/${m.supersedes}">${m.supersedes}</a></dd>` : ""}
+                ${m.supersedes ? `<dt>supersedes</dt><dd><a href="#/memory/${escape(m.supersedes)}">${escape(m.supersedes)}</a></dd>` : ""}
               </dl>
             </div>
             <div class="panel">
@@ -611,17 +665,20 @@
             </div>
           </div>`;
 
+        // Set content via value (not innerHTML) so it is never parsed as markup.
+        $("d-content").value = m.content;
+
         $("d-save").addEventListener("click", async () => {
           const content = $("d-content").value;
           const memoryType = $("d-type").value || undefined;
           $("d-status").textContent = "Saving…";
           $("d-save").disabled = true;
           try {
-            const r = await fetch(`/api/memories/${m.id}`, {
+            const r = await fetch(`/api/memories/${encodeURIComponent(m.id)}`, {
               method: "PUT", headers: { "content-type": "application/json" },
               body: JSON.stringify({ content, memoryType }),
             });
-            if (!r.ok) throw new Error((await r.json()).error || "failed");
+            if (!r.ok) throw new Error(await errMsg(r));
             $("d-status").textContent = "Saved (re-enriching…)";
             setTimeout(() => renderDetail(m.id), 800);
           } catch (err) {
@@ -631,14 +688,14 @@
         });
       }
 
-      window.detailRemoveTag = async (id, tag) => {
+      async function detailRemoveTag(id, tag) {
         await fetch(`/api/memories/${id}/tags`, {
           method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ remove: [tag] }),
         });
         renderDetail(id);
-      };
-      window.openDetailAddTag = (id, btn) => {
+      }
+      function openDetailAddTag(id, btn) {
         const input = document.createElement("input");
         input.className = "tag-input";
         input.placeholder = "new tag…";
@@ -658,10 +715,10 @@
           if (e.key === "Escape") renderDetail(id);
         });
         input.addEventListener("blur", commit);
-      };
+      }
 
       // =====================================================================
-      // Search (#/search) — semantic search with similarity scores
+      // Search (#/search)
       // =====================================================================
       function renderSearch() {
         $("view").innerHTML = `
@@ -685,8 +742,8 @@
               method: "POST", headers: { "content-type": "application/json" },
               body: JSON.stringify({ query, limit: 20 }),
             });
+            if (!r.ok) throw new Error(await errMsg(r));
             const rows = await r.json();
-            if (!r.ok) throw new Error(rows.error || "failed");
             $("s-status").textContent = `${rows.length} result(s)`;
             $("s-results").innerHTML = rows.length
               ? rows.map(renderSearchCard).join("")
@@ -699,12 +756,12 @@
       function renderSearchCard(r) {
         const tags = (r.tags || []).map((t) => `<span class="badge">${escape(t)}</span>`).join(" ");
         return `
-          <article class="card click" onclick="location.hash='#/memory/${r.id}'">
+          <article class="card click" data-nav="#/memory/${escape(r.id)}" role="link" tabindex="0">
             <div class="meta">
               <span class="badge sim">${pct(r.similarity)} match</span>
               ${r.memoryType ? `<span class="badge">${escape(r.memoryType)}</span>` : ""}
               ${r.source ? `<span class="badge">${escape(r.source)}</span>` : ""}
-              <span>${fmt(r.createdAt)}</span>
+              <span>${escape(fmt(r.createdAt))}</span>
               ${govBadges(r)}
             </div>
             ${r.summary ? `<div class="summary">${escape(r.summary)}</div>` : ""}
@@ -714,7 +771,7 @@
       }
 
       // =====================================================================
-      // Audit (#/audit) — review queue for agent-written / pending evidence
+      // Audit (#/audit)
       // =====================================================================
       async function renderAudit() {
         $("view").innerHTML = `
@@ -727,20 +784,25 @@
         await loadAudit();
       }
       async function loadAudit() {
-        const res = await fetch("/api/audit?limit=100");
-        const rows = await res.json();
-        $("count").textContent = `${rows.length} to review`;
         const list = $("a-list");
         if (!list) return;
-        list.innerHTML = rows.length
-          ? rows.map(renderAuditCard).join("")
-          : '<div class="empty">Nothing to review. 🎉</div>';
+        try {
+          const res = await fetch("/api/audit?limit=100");
+          if (!res.ok) throw new Error(await errMsg(res));
+          const rows = await res.json();
+          if ($("count")) $("count").textContent = `${rows.length} to review`;
+          list.innerHTML = rows.length
+            ? rows.map(renderAuditCard).join("")
+            : '<div class="empty">Nothing to review. 🎉</div>';
+        } catch (err) {
+          list.innerHTML = `<div class="empty">Failed to load review queue: ${escape(err.message)}</div>`;
+        }
       }
       function renderAuditCard(r) {
         return `
-          <article class="card" data-id="${r.id}">
+          <article class="card" data-id="${escape(r.id)}">
             <div class="meta">
-              <span>${fmt(r.createdAt)}</span>
+              <span>${escape(fmt(r.createdAt))}</span>
               ${r.source ? `<span class="badge">${escape(r.source)}</span>` : ""}
               ${r.memoryType ? `<span class="badge">${escape(r.memoryType)}</span>` : ""}
               ${govBadges(r)}
@@ -748,14 +810,14 @@
             ${r.summary ? `<div class="summary">${escape(r.summary)}</div>` : ""}
             <div class="content">${escape(r.content)}</div>
             <div class="row" style="margin-top:12px">
-              <button class="sm" onclick="review('${r.id}','confirm')">Confirm</button>
-              <button class="sm ghost" onclick="review('${r.id}','evidence_only')">Evidence only</button>
-              <button class="sm danger" onclick="review('${r.id}','reject')">Reject</button>
-              <a class="back" style="margin:0" href="#/memory/${r.id}">open →</a>
+              <button class="sm" data-act="review" data-id="${escape(r.id)}" data-action="confirm">Confirm</button>
+              <button class="sm ghost" data-act="review" data-id="${escape(r.id)}" data-action="evidence_only">Evidence only</button>
+              <button class="sm danger" data-act="review" data-id="${escape(r.id)}" data-action="reject">Reject</button>
+              <a class="back" style="margin:0" href="#/memory/${escape(r.id)}">open →</a>
             </div>
           </article>`;
       }
-      window.review = async (id, action) => {
+      async function review(id, action) {
         const card = document.querySelector(`#a-list .card[data-id="${id}"]`);
         if (card) card.style.opacity = "0.5";
         try {
@@ -763,16 +825,16 @@
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ action }),
           });
-          if (!r.ok) throw new Error((await r.json()).error || "failed");
+          if (!r.ok) throw new Error(await errMsg(r));
           await loadAudit();
         } catch (err) {
           if ($("a-status")) $("a-status").textContent = `Error: ${err.message}`;
           if (card) card.style.opacity = "1";
         }
-      };
+      }
 
       // =====================================================================
-      // Duplicates (#/duplicates) — exact (fingerprint) + near (vector) pairs
+      // Duplicates (#/duplicates)
       // =====================================================================
       async function renderDuplicates() {
         $("view").innerHTML = `
@@ -792,23 +854,27 @@
         await loadDuplicates(0.9);
       }
       async function loadDuplicates(threshold) {
-        const res = await fetch(`/api/duplicates?threshold=${threshold}`);
-        const data = await res.json();
         const body = $("dup-body");
         if (!body) return;
-        const exact = (data.exact || []).map(renderDupGroup).join("");
-        const near = (data.near || []).map(renderNearPair).join("");
-        body.innerHTML = `
-          <div class="section-h">Exact duplicates (shared content fingerprint)</div>
-          ${exact || '<div class="muted">None.</div>'}
-          <div class="section-h">Near duplicates (vector similarity ≥ ${threshold})</div>
-          ${near || '<div class="muted">None above threshold.</div>'}`;
+        try {
+          const res = await fetch(`/api/duplicates?threshold=${threshold}`);
+          if (!res.ok) throw new Error(await errMsg(res));
+          const data = await res.json();
+          const exact = (data.exact || []).map(renderDupGroup).join("");
+          const near = (data.near || []).map(renderNearPair).join("");
+          body.innerHTML = `
+            <div class="section-h">Exact duplicates (shared content fingerprint)</div>
+            ${exact || '<div class="muted">None.</div>'}
+            <div class="section-h">Near duplicates (vector similarity ≥ ${escape(String(threshold))})</div>
+            ${near || '<div class="muted">None above threshold.</div>'}`;
+        } catch (err) {
+          body.innerHTML = `<div class="empty">Failed to load duplicates: ${escape(err.message)}</div>`;
+        }
       }
       function renderDupGroup(g) {
         // Keep the newest member; offer to supersede the older ones.
         const sorted = [...g.members].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         const keep = sorted[0];
-        const rest = sorted.slice(1);
         return `
           <div class="panel" style="margin-bottom:12px">
             <div class="muted" style="margin-bottom:8px">${g.members.length} memories share content — keeping newest, supersede the rest:</div>
@@ -816,10 +882,10 @@
               <div class="card" style="margin-bottom:8px;${i === 0 ? "border-color:var(--good)" : ""}">
                 <div class="meta">
                   ${i === 0 ? '<span class="badge good">keep (newest)</span>' : ""}
-                  <span>${fmt(mem.createdAt)}</span>
+                  <span>${escape(fmt(mem.createdAt))}</span>
                   ${mem.source ? `<span class="badge">${escape(mem.source)}</span>` : ""}
-                  <a class="back" style="margin:0" href="#/memory/${mem.id}">open →</a>
-                  ${i !== 0 ? `<button class="sm danger" onclick="resolveDup('${keep.id}','${mem.id}')">Supersede</button>` : ""}
+                  <a class="back" style="margin:0" href="#/memory/${escape(mem.id)}">open →</a>
+                  ${i !== 0 ? `<button class="sm danger" data-act="resolvedup" data-keep="${escape(keep.id)}" data-supersede="${escape(mem.id)}">Supersede</button>` : ""}
                 </div>
                 <div class="content" style="max-height:120px">${escape(mem.content)}</div>
               </div>`).join("")}
@@ -828,35 +894,35 @@
       function renderNearPair(p) {
         return `
           <div class="panel dup-pair" style="margin-bottom:12px">
-            <div class="card" style="border:0;padding:0">
-              <div class="meta"><span>${fmt(p.aCreatedAt)}</span><a class="back" style="margin:0" href="#/memory/${p.aId}">open →</a></div>
+            <div>
+              <div class="meta"><span>${escape(fmt(p.aCreatedAt))}</span><a class="back" style="margin:0" href="#/memory/${escape(p.aId)}">open →</a></div>
               <div class="content" style="max-height:160px">${escape(p.aContent)}</div>
             </div>
             <div class="dup-mid">
               <span class="badge sim">${pct(p.similarity)}</span>
-              <button class="sm" onclick="resolveDup('${p.aId}','${p.bId}')">Keep ◀</button>
-              <button class="sm" onclick="resolveDup('${p.bId}','${p.aId}')">Keep ▶</button>
+              <button class="sm" data-act="resolvedup" data-keep="${escape(p.aId)}" data-supersede="${escape(p.bId)}">Keep ◀</button>
+              <button class="sm" data-act="resolvedup" data-keep="${escape(p.bId)}" data-supersede="${escape(p.aId)}">Keep ▶</button>
             </div>
-            <div class="card" style="border:0;padding:0">
-              <div class="meta"><span>${fmt(p.bCreatedAt)}</span><a class="back" style="margin:0" href="#/memory/${p.bId}">open →</a></div>
+            <div>
+              <div class="meta"><span>${escape(fmt(p.bCreatedAt))}</span><a class="back" style="margin:0" href="#/memory/${escape(p.bId)}">open →</a></div>
               <div class="content" style="max-height:160px">${escape(p.bContent)}</div>
             </div>
           </div>`;
       }
-      window.resolveDup = async (keepId, supersedeId) => {
+      async function resolveDup(keepId, supersedeId) {
         if ($("dup-status")) $("dup-status").textContent = "Resolving…";
         try {
           const r = await fetch("/api/duplicates/resolve", {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ keepId, supersedeId }),
           });
-          if (!r.ok) throw new Error((await r.json()).error || "failed");
+          if (!r.ok) throw new Error(await errMsg(r));
           if ($("dup-status")) $("dup-status").textContent = "Resolved.";
           await loadDuplicates(Number($("dup-th")?.value || 0.9));
         } catch (err) {
           if ($("dup-status")) $("dup-status").textContent = `Error: ${err.message}`;
         }
-      };
+      }
 
       // ---- boot ----
       route();
