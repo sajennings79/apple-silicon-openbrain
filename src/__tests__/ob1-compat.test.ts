@@ -99,7 +99,7 @@ test("thought_stats reports a total", async () => {
   expect(stats).toMatch(/Total memories: \d+/);
 });
 
-test("ReviewMemory confirm promotes to instruction-grade; reject hides from search", async () => {
+test("ReviewMemory confirm promotes to instruction-grade and clears pending flag; reject hides from search", async () => {
   // Confirm path.
   const stored = JSON.parse(await call("StoreMemory", {
     content: `${MARKER} confirmable fact about widgets`,
@@ -108,6 +108,9 @@ test("ReviewMemory confirm promotes to instruction-grade; reject hides from sear
   const confirm = JSON.parse(await call("ReviewMemory", { id: stored.id, action: "confirm" }));
   expect(confirm.provenanceStatus).toBe("user_confirmed");
   expect(confirm.canUseAsInstruction).toBe(true);
+  // Any completed review clears requires_user_confirmation.
+  const [row] = (await pg`SELECT requires_user_confirmation FROM memories WHERE id = ${stored.id}`) as any[];
+  expect(row.requires_user_confirmation).toBe(false);
 
   // Reject path: a rejected memory must not surface in default search.
   const rejected = JSON.parse(await call("StoreMemory", {
@@ -115,7 +118,37 @@ test("ReviewMemory confirm promotes to instruction-grade; reject hides from sear
     source: "test-ob1-compat",
   }));
   await call("ReviewMemory", { id: rejected.id, action: "reject" });
+  // reject is also a completed review → pending flag cleared.
+  const [rrow] = (await pg`SELECT requires_user_confirmation FROM memories WHERE id = ${rejected.id}`) as any[];
+  expect(rrow.requires_user_confirmation).toBe(false);
   const visible = JSON.parse(await call("search", { query: `${MARKER} rejectable nonsense widgets` }));
   const ids = visible.results.map((r: any) => r.id);
   expect(ids).not.toContain(rejected.id);
+});
+
+test("StoreMemory ignores caller-supplied trust fields (no review-queue bypass)", async () => {
+  // createdBy/provenanceStatus are NOT in the public schema; an injection attempt
+  // is stripped and the write still defaults to agent/generated/pending.
+  const stored = JSON.parse(await call("StoreMemory", {
+    content: `${MARKER} injection attempt should not be import`,
+    source: "test-ob1-compat",
+    createdBy: "import",
+    provenanceStatus: "imported",
+  } as any));
+  const [row] = (await pg`SELECT created_by, provenance_status, review_status FROM memories WHERE id = ${stored.id}`) as any[];
+  expect(row.created_by).toBe("agent");
+  expect(row.provenance_status).toBe("generated");
+  expect(row.review_status).toBe("pending");
+});
+
+test("ReviewMemory supersede validates the target", async () => {
+  const a = JSON.parse(await call("StoreMemory", { content: `${MARKER} supersede self test`, source: "test-ob1-compat" }));
+  const self = JSON.parse(await call("ReviewMemory", { id: a.id, action: "supersede", relatedId: a.id }));
+  expect(self.error).toMatch(/cannot supersede itself/i);
+  const missing = JSON.parse(await call("ReviewMemory", {
+    id: a.id,
+    action: "supersede",
+    relatedId: "00000000-0000-0000-0000-000000000000",
+  }));
+  expect(missing.error).toMatch(/not found/i);
 });

@@ -68,13 +68,24 @@ export async function reviewMemory(input: ReviewMemoryInput) {
     .limit(1);
   if (!existing) return { error: "Memory not found" };
 
-  if (input.action === "supersede" && !input.relatedId) {
-    return { error: "'supersede' requires relatedId (the older memory being replaced)" };
-  }
-
   const patch = patchFor(input.action);
 
-  if (input.action === "supersede" && input.relatedId) {
+  if (input.action === "supersede") {
+    if (!input.relatedId) {
+      return { error: "'supersede' requires relatedId (the older memory being replaced)" };
+    }
+    if (input.relatedId === input.id) {
+      return { error: "A memory cannot supersede itself" };
+    }
+    // Validate the target exists and is live before mutating either row, so we
+    // don't leave a dangling supersedes pointer or audit a non-memory.
+    const [target] = await db
+      .select({ id: memories.id })
+      .from(memories)
+      .where(and(eq(memories.id, input.relatedId), isNull(memories.deletedAt)))
+      .limit(1);
+    if (!target) return { error: "supersede target (relatedId) not found" };
+
     // This memory supersedes the older one: point at it, and mark the older one
     // superseded so it is no longer auto-injected.
     patch.supersedes = input.relatedId;
@@ -92,7 +103,9 @@ export async function reviewMemory(input: ReviewMemoryInput) {
 
   const [row] = await db
     .update(memories)
-    .set({ ...patch, updatedAt: new Date() })
+    // Any completed review clears the pending-confirmation flag — a human has
+    // now acted on this memory regardless of which action they chose.
+    .set({ ...patch, requiresUserConfirmation: false, updatedAt: new Date() })
     .where(eq(memories.id, input.id))
     .returning({
       id: memories.id,

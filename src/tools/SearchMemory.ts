@@ -85,13 +85,14 @@ export async function searchMemory(input: SearchMemoryInput) {
     conditions.push(`(provenance_status IS NULL OR provenance_status NOT IN ('superseded', 'disputed'))`);
   }
 
-  // Cosine similarity in [0,1]. Recency factor decays exp(-age_days / half_life).
-  // Blended score = similarity*(1-w) + recency*w. With w=0 (default) this reduces
-  // to pure similarity and ordering matches the prior behavior.
+  // Cosine similarity in [0,1]. Recency factor is a true half-life: it decays to
+  // exactly 0.5 at halfLifeDays (hence the ln(2) factor — exp(-age/half) alone
+  // would only reach ~0.37). Blended score = similarity*(1-w) + recency*w. With
+  // w=0 (default) this reduces to pure similarity and ordering is unchanged.
   const w = input.recencyWeight ?? 0;
   const halfLife = input.halfLifeDays ?? 90;
   const simExpr = `1 - (embedding <=> '${vecLiteral}'::vector)`;
-  const recencyExpr = `exp(- (EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0) / ${halfLife})`;
+  const recencyExpr = `exp(- ln(2) * (EXTRACT(EPOCH FROM (now() - created_at)) / 86400.0) / ${halfLife})`;
   const scoreExpr = w > 0 ? `(${simExpr}) * ${1 - w} + (${recencyExpr}) * ${w}` : simExpr;
 
   if (input.threshold != null) {

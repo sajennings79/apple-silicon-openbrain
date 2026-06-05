@@ -73,9 +73,12 @@ export const memories = pgTable(
       .on(table.supersedes)
       .where(sql`${table.supersedes} IS NOT NULL`),
     // Trust rule: instruction-grade memory must be human-confirmed or trusted-imported.
+    // NULL-safe: `provenance_status IN (...)` is NULL when provenance_status is NULL,
+    // and Postgres treats a NULL CHECK predicate as satisfied — COALESCE(...,false)
+    // closes that bypass so can_use_as_instruction=true can't pass with NULL provenance.
     check(
       "chk_memories_instruction_grade",
-      sql`${table.canUseAsInstruction} = false OR ${table.provenanceStatus} IN ('user_confirmed', 'imported')`
+      sql`${table.canUseAsInstruction} IS NOT TRUE OR COALESCE(${table.provenanceStatus} IN ('user_confirmed', 'imported'), false)`
     ),
   ]
 );

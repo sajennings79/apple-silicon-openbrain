@@ -205,14 +205,16 @@ export async function syncMailSource(source: SourceRow): Promise<{ ingested: num
 
       const content = `# ${subject}\n\nFrom: ${from}\nDate: ${date}\nAccount: ${account}\nLabels: ${(msg.labelIds ?? []).join(", ") || "(none)"}\n\n---\n\n${body}`;
 
-      await storeMemory({
-        content,
-        source: "mail",
-        sourceId: msg.id,
-        memoryType: "fact",
-        tags: msg.labelIds ?? [],
-        createdBy: "import",
-      });
+      await storeMemory(
+        {
+          content,
+          source: "mail",
+          sourceId: msg.id,
+          memoryType: "fact",
+          tags: msg.labelIds ?? [],
+        },
+        { createdBy: "import" },
+      );
       ingested++;
 
       // If followLinks is enabled, extract and ingest each linked article

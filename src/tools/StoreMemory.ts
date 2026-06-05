@@ -25,34 +25,35 @@ export const StoreMemorySchema = z.object({
     .record(z.array(z.string()))
     .optional()
     .describe("Named entities: { person: [...], tech: [...], ... }"),
-  // --- Governance (optional; sensible defaults applied) ---
-  createdBy: z
-    .enum(["user", "agent", "system", "import"])
-    .optional()
-    .describe("Who created this memory. Defaults to 'agent' for direct tool calls."),
-  provenanceStatus: z
-    .enum(["observed", "inferred", "user_confirmed", "imported", "generated"])
-    .optional()
-    .describe("Trust-ladder status. Defaults follow createdBy (agent→generated, import→imported)."),
-  confidence: z.number().min(0).max(1).optional().describe("0..1 confidence for agent-written memory"),
 });
 
-export type StoreMemoryInput = z.infer<typeof StoreMemorySchema> & {
+export type StoreMemoryInput = z.infer<typeof StoreMemorySchema>;
+
+// Trusted, server-side-only governance context. These are deliberately NOT part
+// of StoreMemorySchema (the public MCP input shape) — exposing them would let any
+// caller mark a write as "import" to skip the review queue. Only trusted internal
+// callers (ingest, mail, compat capture) pass these.
+export interface StoreMemoryOptions {
+  enrich?: boolean;
+  createdBy?: "user" | "agent" | "system" | "import";
+  provenanceStatus?: "observed" | "inferred" | "user_confirmed" | "imported" | "generated";
+  confidence?: number;
   // Forward-compat scope passthrough (single-user today; no enforcement).
   workspaceId?: string;
   projectId?: string;
   visibility?: string;
-};
+}
 
-export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: boolean } = {}) {
+export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOptions = {}) {
   const enrich = opts.enrich ?? true;
 
   // Derive governance defaults. Core rule: agent-written memory enters as
   // *evidence*, not *instruction* — only an explicit human review (ReviewMemory)
-  // promotes it to instruction-grade.
-  const createdBy = input.createdBy ?? "agent";
+  // promotes it to instruction-grade. Provenance/createdBy come from trusted
+  // server-side context (opts), never from the public tool input.
+  const createdBy = opts.createdBy ?? "agent";
   const provenanceStatus =
-    input.provenanceStatus ?? (createdBy === "import" ? "imported" : "generated");
+    opts.provenanceStatus ?? (createdBy === "import" ? "imported" : "generated");
   // Imported/system content isn't part of the human review queue; agent/user
   // writes start pending review.
   const reviewStatus = createdBy === "agent" || createdBy === "user" ? "pending" : null;
@@ -92,12 +93,12 @@ export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: bool
       contentFingerprint: fingerprint,
       createdBy,
       provenanceStatus,
-      confidence: input.confidence ?? null,
+      confidence: opts.confidence ?? null,
       reviewStatus,
       requiresUserConfirmation,
-      workspaceId: input.workspaceId ?? null,
-      projectId: input.projectId ?? null,
-      visibility: input.visibility ?? null,
+      workspaceId: opts.workspaceId ?? null,
+      projectId: opts.projectId ?? null,
+      visibility: opts.visibility ?? null,
     })
     // Backstop against the SELECT-then-INSERT dedup race: if a concurrent run
     // already inserted this (source, source_id), the partial unique index makes

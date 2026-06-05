@@ -149,14 +149,24 @@ export function registerCompatTools(server: McpServer): void {
       topic: z.string().optional().describe("Filter by tag"),
       person: z.string().optional().describe("Filter by person entity"),
       days: z.number().optional().describe("Only memories from the last N days"),
+      includeRejected: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include rejected/superseded/disputed memories (excluded by default)"),
     },
-    async ({ limit, type, topic, person, days }) => {
+    async ({ limit, type, topic, person, days, includeRejected }) => {
       try {
         const conds = [sql`deleted_at IS NULL`];
         if (type) conds.push(sql`memory_type = ${type}`);
         if (topic) conds.push(sql`tags @> ARRAY[${topic}]::text[]`);
         if (person) conds.push(sql`entities @> ${JSON.stringify({ person: [person] })}::jsonb`);
         if (days) conds.push(sql`created_at >= now() - (${days} || ' days')::interval`);
+        // Hide governance-rejected memories by default (NULL governance passes).
+        if (!includeRejected) {
+          conds.push(sql`(review_status IS NULL OR review_status NOT IN ('rejected'))`);
+          conds.push(sql`(provenance_status IS NULL OR provenance_status NOT IN ('superseded', 'disputed'))`);
+        }
 
         const rows = await db.execute<{
           content: string;
@@ -255,7 +265,7 @@ export function registerCompatTools(server: McpServer): void {
     },
     async ({ content }) => {
       try {
-        const result = await storeMemory({ content, source: "mcp", createdBy: "agent" });
+        const result = await storeMemory({ content, source: "mcp" }, { createdBy: "agent" });
         if ("deduped" in result && result.deduped) {
           return text(`Already captured (duplicate of existing memory ${result.id}).`);
         }
