@@ -141,6 +141,26 @@ test("StoreMemory ignores caller-supplied trust fields (no review-queue bypass)"
   expect(row.review_status).toBe("pending");
 });
 
+test("ListMemories excludes rejected memories by default, includes them on request", async () => {
+  const stored = JSON.parse(await call("StoreMemory", {
+    content: `${MARKER} list-filter rejected widget`,
+    source: "test-ob1-compat",
+  }));
+  await call("ReviewMemory", { id: stored.id, action: "reject" });
+
+  // Default: rejected memory is hidden.
+  const def = JSON.parse(await call("ListMemories", { source: "test-ob1-compat", limit: 100 }));
+  expect(def.memories.map((m: any) => m.id)).not.toContain(stored.id);
+
+  // Opt-in: includeRejected surfaces it again.
+  const incl = JSON.parse(await call("ListMemories", {
+    source: "test-ob1-compat",
+    limit: 100,
+    includeRejected: true,
+  }));
+  expect(incl.memories.map((m: any) => m.id)).toContain(stored.id);
+});
+
 test("ReviewMemory supersede validates the target", async () => {
   const a = JSON.parse(await call("StoreMemory", { content: `${MARKER} supersede self test`, source: "test-ob1-compat" }));
   const self = JSON.parse(await call("ReviewMemory", { id: a.id, action: "supersede", relatedId: a.id }));
