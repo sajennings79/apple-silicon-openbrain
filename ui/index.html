@@ -248,8 +248,17 @@
 
       const $ = (id) => document.getElementById(id);
       const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "");
-      const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      // Date-only strings (SQL DATE, e.g. perDay.day "2026-06-05") must be parsed
+      // as a LOCAL date — new Date("YYYY-MM-DD") parses as UTC and drifts a day in
+      // negative-offset timezones. Full timestamps keep going through new Date().
+      const fmtDay = (iso) => {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ""));
+        const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      };
       const pct = (n) => `${(n * 100).toFixed(1)}%`;
+      // Attributes that make a non-button [data-act] element keyboard-focusable.
+      const ACT = 'role="button" tabindex="0"';
 
       function escape(s) {
         return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -311,11 +320,15 @@
         const nav = e.target.closest("[data-nav]");
         if (nav) location.hash = nav.dataset.nav;
       });
-      // Keyboard activation for card "links" (role=link + tabindex).
+      // Keyboard activation for card "links" (role=link) and non-button [data-act]
+      // controls (filters, tag chips, stat rows). Native <button> data-act elements
+      // are skipped here — their Enter/Space already fires a click we delegate.
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Enter" && e.key !== " ") return;
         const el = e.target;
-        if (el.matches && el.matches("[data-nav]")) { e.preventDefault(); location.hash = el.dataset.nav; }
+        if (!el.matches) return;
+        if (el.matches("[data-nav]")) { e.preventDefault(); location.hash = el.dataset.nav; return; }
+        if (el.matches("[data-act]:not(button)")) { e.preventDefault(); handleAct(el); }
       });
 
       // =====================================================================
@@ -491,12 +504,12 @@
           : `<span title="Import date">${escape(fmt(r.createdAt))}</span>`;
         const meta = [
           dateLabel,
-          r.source ? `<span class="badge click" data-act="filter" data-key="source" data-val="${escape(r.source)}">${escape(r.source)}</span>` : "",
-          r.memoryType ? `<span class="badge click" data-act="filter" data-key="type" data-val="${escape(r.memoryType)}">${escape(r.memoryType)}</span>` : "",
+          r.source ? `<span class="badge click" ${ACT} data-act="filter" data-key="source" data-val="${escape(r.source)}">${escape(r.source)}</span>` : "",
+          r.memoryType ? `<span class="badge click" ${ACT} data-act="filter" data-key="type" data-val="${escape(r.memoryType)}">${escape(r.memoryType)}</span>` : "",
         ].filter(Boolean).join("");
         const tagChips = (r.tags || []).map((t) => `
-          <span class="tag" data-act="filter" data-key="tag" data-val="${escape(t)}">
-            ${escape(t)}<span class="tag-remove" data-act="removetag" data-id="${escape(r.id)}" data-tag="${escape(t)}">×</span>
+          <span class="tag" ${ACT} data-act="filter" data-key="tag" data-val="${escape(t)}">
+            ${escape(t)}<span class="tag-remove" ${ACT} data-act="removetag" data-id="${escape(r.id)}" data-tag="${escape(t)}" aria-label="remove tag ${escape(t)}">×</span>
           </span>`).join("");
         const summary = r.summary ? `<div class="summary">${escape(r.summary)}</div>` : "";
         return `
@@ -530,19 +543,37 @@
         });
         input.addEventListener("blur", commit);
       }
-      async function addTag(id, tag) {
-        await fetch(`/api/memories/${id}/tags`, {
+      // Single PATCH path for tag add/remove — throws on a non-OK response so
+      // callers surface the failure instead of silently reloading unchanged.
+      async function patchTags(id, body) {
+        const res = await fetch(`/api/memories/${id}/tags`, {
           method: "PATCH", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ add: [tag] }),
+          body: JSON.stringify(body),
         });
-        await Promise.all([loadMemories(), loadStats()]);
+        if (!res.ok) throw new Error(await errMsg(res));
+      }
+      function flashStatus(id, msg) {
+        const el = $(id);
+        if (!el) return;
+        el.textContent = msg;
+        setTimeout(() => { if ($(id)) $(id).textContent = ""; }, 4000);
+      }
+      async function addTag(id, tag) {
+        try {
+          await patchTags(id, { add: [tag] });
+          await Promise.all([loadMemories(), loadStats()]);
+        } catch (err) {
+          flashStatus("status", `Add tag failed: ${err.message}`);
+          loadMemories();
+        }
       }
       async function removeTag(id, tag) {
-        await fetch(`/api/memories/${id}/tags`, {
-          method: "PATCH", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ remove: [tag] }),
-        });
-        await Promise.all([loadMemories(), loadStats()]);
+        try {
+          await patchTags(id, { remove: [tag] });
+          await Promise.all([loadMemories(), loadStats()]);
+        } catch (err) {
+          flashStatus("status", `Remove tag failed: ${err.message}`);
+        }
       }
 
       async function loadStats() {
@@ -583,12 +614,12 @@
       function statRow(kind, key, count) {
         const active = state.filters[kind] === key && key !== "(none)";
         const clickable = key !== "(none)";
-        const attrs = clickable ? `data-act="filter" data-key="${escape(kind)}" data-val="${escape(key)}"` : "";
+        const attrs = clickable ? `${ACT} data-act="filter" data-key="${escape(kind)}" data-val="${escape(key)}"` : "";
         return `<div class="stat-row ${active ? "active" : ""}" ${attrs}>
           <span class="key">${escape(key)}</span><span class="count">${count}</span></div>`;
       }
       function tagCloudChip(tag, count) {
-        return `<span class="tag ${state.filters.tag === tag ? "active" : ""}" data-act="filter" data-key="tag" data-val="${escape(tag)}">${escape(tag)}<span class="n">${count}</span></span>`;
+        return `<span class="tag ${state.filters.tag === tag ? "active" : ""}" ${ACT} data-act="filter" data-key="tag" data-val="${escape(tag)}">${escape(tag)}<span class="n">${count}</span></span>`;
       }
       function renderStatsHighlights() {
         if (!state.stats || !$("by-type")) return;
@@ -612,7 +643,7 @@
           return;
         }
         const tagChips = (m.tags || []).map((t) =>
-          `<span class="tag">${escape(t)}<span class="tag-remove" data-act="detail-removetag" data-id="${escape(m.id)}" data-tag="${escape(t)}">×</span></span>`
+          `<span class="tag">${escape(t)}<span class="tag-remove" ${ACT} data-act="detail-removetag" data-id="${escape(m.id)}" data-tag="${escape(t)}" aria-label="remove tag ${escape(t)}">×</span></span>`
         ).join("");
         const people = (m.people || []).map((p) => `<span class="badge">${escape(p)}</span>`).join(" ");
         const links = (m.linkedMemories || []).map((l) =>
@@ -689,11 +720,12 @@
       }
 
       async function detailRemoveTag(id, tag) {
-        await fetch(`/api/memories/${id}/tags`, {
-          method: "PATCH", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ remove: [tag] }),
-        });
-        renderDetail(id);
+        try {
+          await patchTags(id, { remove: [tag] });
+          renderDetail(id);
+        } catch (err) {
+          flashStatus("d-status", `Remove tag failed: ${err.message}`);
+        }
       }
       function openDetailAddTag(id, btn) {
         const input = document.createElement("input");
@@ -704,11 +736,12 @@
         const commit = async () => {
           const val = input.value.trim();
           if (!val) return renderDetail(id);
-          await fetch(`/api/memories/${id}/tags`, {
-            method: "PATCH", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ add: [val] }),
-          });
-          renderDetail(id);
+          try {
+            await patchTags(id, { add: [val] });
+            renderDetail(id);
+          } catch (err) {
+            flashStatus("d-status", `Add tag failed: ${err.message}`);
+          }
         };
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
