@@ -114,8 +114,12 @@ export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOpti
       .from(memories)
       .where(
         and(
-          eq(memories.source, input.source ?? null),
-          eq(memories.sourceId, input.sourceId ?? null),
+          // Drizzle's eq(col, null) emits `= NULL` (never matches). Use isNull
+          // for the null case so the race-lost fallback resolves correctly.
+          input.source == null ? isNull(memories.source) : eq(memories.source, input.source),
+          input.sourceId == null
+            ? isNull(memories.sourceId)
+            : eq(memories.sourceId, input.sourceId),
           isNull(memories.deletedAt),
         ),
       )
