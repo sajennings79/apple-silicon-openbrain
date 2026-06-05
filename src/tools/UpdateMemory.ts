@@ -4,7 +4,7 @@ import { db } from "../db/client.js";
 import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
 import { setCachedEmbedding } from "../services/cache.js";
-import { enrichMemory } from "../services/enrichment.js";
+import { queueEnrichment } from "../services/enrichment.js";
 
 export const UpdateMemorySchema = z.object({
   id: z.string().uuid().describe("The memory UUID to update"),
@@ -38,9 +38,9 @@ export async function updateMemory(input: z.infer<typeof UpdateMemorySchema>) {
 
   if (!row) return { error: "Memory not found" };
 
-  // Re-enrich if content changed
+  // Re-enrich if content changed (serial queue — see enrichment.ts)
   if (input.content) {
-    enrichMemory(row.id, input.content).catch(() => {});
+    queueEnrichment(row.id, input.content);
   }
 
   return row;
