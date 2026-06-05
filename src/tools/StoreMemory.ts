@@ -4,7 +4,7 @@ import { db } from "../db/client.js";
 import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
 import { getCachedEmbedding, setCachedEmbedding } from "../services/cache.js";
-import { enrichMemory } from "../services/enrichment.js";
+import { queueEnrichment } from "../services/enrichment.js";
 import { linkRelatedMemories } from "../services/linking.js";
 import { contentFingerprint } from "../services/fingerprint.js";
 import { recordAudit } from "../services/audit.js";
@@ -137,9 +137,11 @@ export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOpti
     diff: { provenanceStatus, reviewStatus, memoryType: input.memoryType ?? null },
   }).catch(() => {});
 
-  // Fire-and-forget enrichment via mlx-lm (skipped during bulk imports)
+  // Fire-and-forget enrichment via mlx-lm (skipped during bulk imports).
+  // Serialized through queueEnrichment — RSS/webpage sync bursts used to fire
+  // dozens of concurrent LLM calls and time most of them out (see enrichment.ts).
   if (enrich) {
-    enrichMemory(row.id, input.content).catch(() => {});
+    queueEnrichment(row.id, input.content);
   }
 
   // Fire-and-forget cross-memory linking

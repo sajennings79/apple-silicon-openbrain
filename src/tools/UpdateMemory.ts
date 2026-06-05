@@ -4,7 +4,7 @@ import { db } from "../db/client.js";
 import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
 import { setCachedEmbedding } from "../services/cache.js";
-import { enrichMemory } from "../services/enrichment.js";
+import { queueEnrichment } from "../services/enrichment.js";
 import { contentFingerprint } from "../services/fingerprint.js";
 import { recordAudit } from "../services/audit.js";
 
@@ -54,9 +54,9 @@ export async function updateMemory(input: z.infer<typeof UpdateMemorySchema>) {
     },
   }).catch(() => {});
 
-  // Re-enrich if content changed
+  // Re-enrich if content changed (serial queue — see enrichment.ts)
   if (input.content) {
-    enrichMemory(row.id, input.content).catch(() => {});
+    queueEnrichment(row.id, input.content);
   }
 
   return row;
