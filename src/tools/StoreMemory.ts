@@ -6,6 +6,8 @@ import { getEmbedding } from "../services/embedding.js";
 import { getCachedEmbedding, setCachedEmbedding } from "../services/cache.js";
 import { enrichMemory } from "../services/enrichment.js";
 import { linkRelatedMemories } from "../services/linking.js";
+import { contentFingerprint } from "../services/fingerprint.js";
+import { recordAudit } from "../services/audit.js";
 
 export const StoreMemorySchema = z.object({
   content: z.string().describe("The text content to store as a memory"),
@@ -23,12 +25,52 @@ export const StoreMemorySchema = z.object({
     .record(z.array(z.string()))
     .optional()
     .describe("Named entities: { person: [...], tech: [...], ... }"),
+  // --- Governance (optional; sensible defaults applied) ---
+  createdBy: z
+    .enum(["user", "agent", "system", "import"])
+    .optional()
+    .describe("Who created this memory. Defaults to 'agent' for direct tool calls."),
+  provenanceStatus: z
+    .enum(["observed", "inferred", "user_confirmed", "imported", "generated"])
+    .optional()
+    .describe("Trust-ladder status. Defaults follow createdBy (agent→generated, import→imported)."),
+  confidence: z.number().min(0).max(1).optional().describe("0..1 confidence for agent-written memory"),
 });
 
-export type StoreMemoryInput = z.infer<typeof StoreMemorySchema>;
+export type StoreMemoryInput = z.infer<typeof StoreMemorySchema> & {
+  // Forward-compat scope passthrough (single-user today; no enforcement).
+  workspaceId?: string;
+  projectId?: string;
+  visibility?: string;
+};
 
 export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: boolean } = {}) {
   const enrich = opts.enrich ?? true;
+
+  // Derive governance defaults. Core rule: agent-written memory enters as
+  // *evidence*, not *instruction* — only an explicit human review (ReviewMemory)
+  // promotes it to instruction-grade.
+  const createdBy = input.createdBy ?? "agent";
+  const provenanceStatus =
+    input.provenanceStatus ?? (createdBy === "import" ? "imported" : "generated");
+  // Imported/system content isn't part of the human review queue; agent/user
+  // writes start pending review.
+  const reviewStatus = createdBy === "agent" || createdBy === "user" ? "pending" : null;
+  const requiresUserConfirmation = createdBy === "agent" || createdBy === "user";
+
+  const fingerprint = contentFingerprint(input.content);
+
+  // Advisory content dedup for freeform captures (no external sourceId). URL/mail
+  // memories already dedup on (source, source_id); this catches identical agent
+  // captures that arrive without a sourceId.
+  if (!input.sourceId) {
+    const [dupe] = await db
+      .select({ id: memories.id, createdAt: memories.createdAt })
+      .from(memories)
+      .where(and(eq(memories.contentFingerprint, fingerprint), isNull(memories.deletedAt)))
+      .limit(1);
+    if (dupe) return { id: dupe.id, createdAt: dupe.createdAt, deduped: true as const };
+  }
 
   // Get embedding (check cache first)
   let embedding = await getCachedEmbedding(input.content);
@@ -47,6 +89,15 @@ export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: bool
       memoryType: input.memoryType ?? null,
       tags: input.tags ?? [],
       entities: input.entities ?? {},
+      contentFingerprint: fingerprint,
+      createdBy,
+      provenanceStatus,
+      confidence: input.confidence ?? null,
+      reviewStatus,
+      requiresUserConfirmation,
+      workspaceId: input.workspaceId ?? null,
+      projectId: input.projectId ?? null,
+      visibility: input.visibility ?? null,
     })
     // Backstop against the SELECT-then-INSERT dedup race: if a concurrent run
     // already inserted this (source, source_id), the partial unique index makes
@@ -71,6 +122,15 @@ export async function storeMemory(input: StoreMemoryInput, opts: { enrich?: bool
     if (!existing) throw new Error("insert conflicted but no existing row found");
     return { id: existing.id, createdAt: existing.createdAt };
   }
+
+  // Append-only audit (fire-and-forget).
+  recordAudit({
+    memoryId: row.id,
+    action: "capture",
+    source: input.source ?? null,
+    actor: createdBy,
+    diff: { provenanceStatus, reviewStatus, memoryType: input.memoryType ?? null },
+  }).catch(() => {});
 
   // Fire-and-forget enrichment via mlx-lm (skipped during bulk imports)
   if (enrich) {

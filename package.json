@@ -1,6 +1,6 @@
 {
   "name": "openbrain",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "packageManager": "pnpm@11.0.4",
   "engines": {
@@ -11,7 +11,9 @@
     "ui": "bun run ui/server.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
-    "health": "bun run scripts/health-check.ts"
+    "health": "bun run scripts/health-check.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

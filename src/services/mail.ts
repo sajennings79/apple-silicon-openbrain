@@ -211,6 +211,7 @@ export async function syncMailSource(source: SourceRow): Promise<{ ingested: num
         sourceId: msg.id,
         memoryType: "fact",
         tags: msg.labelIds ?? [],
+        createdBy: "import",
       });
       ingested++;
 

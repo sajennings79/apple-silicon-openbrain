@@ -8,4 +8,7 @@ export const config = {
   mcpHost: process.env.MCP_HOST ?? "0.0.0.0",
   authToken: process.env.AUTH_TOKEN ?? "",
   firecrawlApiKey: process.env.FIRECRAWL_API_KEY ?? "",
+  // Base URL used to build citation links in the OB1-compatible search/fetch
+  // tools. Points at the local UI by default.
+  citationBaseUrl: process.env.OPEN_BRAIN_CITATION_BASE_URL ?? "http://localhost:6279/memory",
 } as const;

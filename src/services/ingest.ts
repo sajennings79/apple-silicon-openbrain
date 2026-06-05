@@ -39,6 +39,7 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
       source: "youtube",
       sourceId: targetUrl,
       memoryType: "fact",
+      createdBy: "import",
     });
     return { status: "created", id: result.id, title: yt.title };
   }
@@ -49,6 +50,7 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
     source: "web",
     sourceId: targetUrl,
     memoryType: "fact",
+    createdBy: "import",
   });
   return { status: "created", id: result.id, title: scraped.title };
 }
