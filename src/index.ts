@@ -2,6 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { createServer } from "./server.js";
 import { config } from "./lib/config.js";
 import { ingestUrl } from "./services/ingest.js";
+import { enrichmentQueueDepth } from "./services/enrichment.js";
 import { handleSourcesRoute } from "./api/sources.js";
 
 // Session management: map session IDs to their transport+server
@@ -141,6 +142,7 @@ const app = Bun.serve({
         status: "ok",
         service: "openbrain",
         sessions: sessions.size,
+        enrichmentQueueDepth: enrichmentQueueDepth(),
       });
     }
 
