@@ -34,21 +34,27 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
 
   if (source === "youtube") {
     const yt = await fetchYouTubeTranscript(targetUrl);
-    const result = await storeMemory({
-      content: yt.transcript,
-      source: "youtube",
-      sourceId: targetUrl,
-      memoryType: "fact",
-    });
+    const result = await storeMemory(
+      {
+        content: yt.transcript,
+        source: "youtube",
+        sourceId: targetUrl,
+        memoryType: "fact",
+      },
+      { createdBy: "import" },
+    );
     return { status: "created", id: result.id, title: yt.title };
   }
 
   const scraped = await scrapeUrl(targetUrl);
-  const result = await storeMemory({
-    content: scraped.markdown,
-    source: "web",
-    sourceId: targetUrl,
-    memoryType: "fact",
-  });
+  const result = await storeMemory(
+    {
+      content: scraped.markdown,
+      source: "web",
+      sourceId: targetUrl,
+      memoryType: "fact",
+    },
+    { createdBy: "import" },
+  );
   return { status: "created", id: result.id, title: scraped.title };
 }

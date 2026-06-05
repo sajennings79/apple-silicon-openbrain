@@ -1,0 +1,30 @@
+{
+  "name": "OpenBrain (local, Apple Silicon)",
+  "description": "Fully-local, single-user OpenBrain implementation for Apple Silicon: Bun MCP server + local MLX embeddings (1024-dim) + Postgres/pgvector. Mirrors OB1's canonical MCP tools and adopts its agent-memory trust-ladder governance.",
+  "category": "integrations",
+  "author": { "name": "Scott Jennings", "github": "sajennings79" },
+  "version": "0.2.0",
+  "requires": {
+    "open_brain": false,
+    "services": ["PostgreSQL 17 + pgvector", "Redis", "MLX (embeddings + enrichment)"],
+    "tools": ["Bun", "Node.js 22+", "pnpm"]
+  },
+  "tags": ["openbrain", "ob1-compatible", "mcp", "local", "apple-silicon", "pgvector", "agent-memory"],
+  "difficulty": "advanced",
+  "estimated_time": "45 minutes",
+  "created": "2026-06-05",
+  "updated": "2026-06-05",
+  "openbrain_compat": {
+    "note": "Self-description following OB1's .github/metadata.schema.json vocabulary. requires.open_brain is false because this project *is* an OpenBrain, not a contribution that plugs into a hosted one.",
+    "canonical_mcp_tools": [
+      "search",
+      "fetch",
+      "search_thoughts",
+      "list_thoughts",
+      "thought_stats",
+      "capture_thought"
+    ],
+    "governance": "Trust ladder (provenance_status / created_by), evidence-vs-instruction use policy, content-fingerprint dedup, append-only memory_audit, review lifecycle via the ReviewMemory tool.",
+    "deferred": "Agent Memory wire API (/recall, /writeback) matching openbrain.openclaw.*.v1 — documented in the strategy doc, not yet implemented."
+  }
+}

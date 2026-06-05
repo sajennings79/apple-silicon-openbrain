@@ -5,6 +5,8 @@ import { RecallMemorySchema, recallMemory } from "./tools/RecallMemory.js";
 import { ListMemoriesSchema, listMemories } from "./tools/ListMemories.js";
 import { UpdateMemorySchema, updateMemory } from "./tools/UpdateMemory.js";
 import { DeleteMemorySchema, deleteMemory } from "./tools/DeleteMemory.js";
+import { ReviewMemorySchema, reviewMemory } from "./tools/ReviewMemory.js";
+import { registerCompatTools } from "./tools/compat.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -71,6 +73,20 @@ export function createServer(): McpServer {
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     }
   );
+
+  server.tool(
+    "ReviewMemory",
+    "Review an agent-written memory (trust ladder). 'confirm' promotes it to instruction-grade; 'evidence_only'/'reject'/'restrict_scope'/'mark_stale'/'dispute'/'supersede' adjust its lifecycle.",
+    ReviewMemorySchema.shape,
+    async (input) => {
+      const result = await reviewMemory(input as any);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  );
+
+  // OB1 ("Open Brain") canonical tool parity: search, fetch, search_thoughts,
+  // list_thoughts, thought_stats, capture_thought.
+  registerCompatTools(server);
 
   return server;
 }

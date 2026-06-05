@@ -20,6 +20,17 @@ Fully local AI memory system for Apple Silicon Macs. MCP server giving Claude Co
 - **Content truncation**: Enrichment caps input at 4000 chars to avoid Metal GPU OOM.
 - **Auth**: Bearer token required for non-localhost MCP requests. `/api/*` routes are open (intended for local network only).
 
+## OB1 Compatibility & Governance
+
+Modeled on Nate B. Jones's [OB1 / "Open Brain"](https://github.com/NateBJones-Projects/OB1) ecosystem. See `metadata.json` (OB1 catalog vocabulary) and the strategy doc referenced in `[[ob1-relationship]]` memory.
+
+- **Canonical MCP tool parity** (`src/tools/compat.ts`): mirrors OB1's `search`, `fetch`, `search_thoughts`, `list_thoughts`, `thought_stats`, `capture_thought` as translating aliases over our native tools so OB1 companion skills/prompt packs work. Field translation: `memoryType↔type`, `tags↔topics`, `entities.person↔people`. Taxonomies differ — aliases translate, they don't pretend the enums match.
+- **Trust ladder** (governance columns on `memories`): agent-written memory enters as **evidence**, not **instruction**. `created_by` (user/agent/system/import), `provenance_status`, `review_status`. `can_use_as_instruction` may only be true for `user_confirmed`/`imported` memory — enforced by the `chk_memories_instruction_grade` CHECK. Promote via the `ReviewMemory` tool (`confirm` → instruction-grade).
+- **Content-fingerprint dedup**: `content_fingerprint` (sha256 of normalized content) is **advisory/non-unique** — the live corpus already holds legitimately-duplicated content, so a hard UNIQUE would fail. `storeMemory` uses it to dedup freeform captures that lack a `sourceId`. JS `normalizeForFingerprint` must mirror the SQL backfill in `drizzle/0006_governance.sql`.
+- **Append-only audit**: `memory_audit` (memory_id is NOT a FK so audit survives deletion). Written fire-and-forget on capture/update/review/supersede.
+- **Recency-boosted ranking**: `SearchMemory` accepts `recencyWeight`/`halfLifeDays` (blend, default 0 = pure similarity) and `threshold`; rejected/superseded/disputed memories are excluded unless `includeRejected`.
+- **Scope columns** (`workspace_id`/`project_id`/`visibility`): nullable, forward-compat only — no multi-tenant enforcement yet.
+
 ## Commands
 
 ```bash
@@ -28,6 +39,8 @@ bun run ui           # Web UI
 bun run db:generate  # Generate Drizzle migrations
 bun run db:migrate   # Apply migrations
 bun run health       # Health check all services
+bun run test         # Run the test suite (bun test)
+bun run typecheck    # tsc --noEmit
 ```
 
 ## Package Manager + Runtime

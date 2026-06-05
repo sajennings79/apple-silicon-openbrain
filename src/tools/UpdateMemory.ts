@@ -5,6 +5,8 @@ import { memories } from "../db/schema.js";
 import { getEmbedding } from "../services/embedding.js";
 import { setCachedEmbedding } from "../services/cache.js";
 import { queueEnrichment } from "../services/enrichment.js";
+import { contentFingerprint } from "../services/fingerprint.js";
+import { recordAudit } from "../services/audit.js";
 
 export const UpdateMemorySchema = z.object({
   id: z.string().uuid().describe("The memory UUID to update"),
@@ -25,6 +27,8 @@ export async function updateMemory(input: z.infer<typeof UpdateMemorySchema>) {
     await setCachedEmbedding(input.content, embedding);
     updates.content = input.content;
     updates.embedding = embedding;
+    // Keep the advisory dedup key in sync with the new content.
+    updates.contentFingerprint = contentFingerprint(input.content);
   }
   if (input.memoryType !== undefined) updates.memoryType = input.memoryType;
   if (input.tags !== undefined) updates.tags = input.tags;
@@ -37,6 +41,18 @@ export async function updateMemory(input: z.infer<typeof UpdateMemorySchema>) {
     .returning({ id: memories.id, updatedAt: memories.updatedAt });
 
   if (!row) return { error: "Memory not found" };
+
+  recordAudit({
+    memoryId: row.id,
+    action: "update",
+    actor: "user",
+    diff: {
+      contentChanged: input.content !== undefined,
+      memoryType: input.memoryType,
+      tags: input.tags,
+      entities: input.entities,
+    },
+  }).catch(() => {});
 
   // Re-enrich if content changed (serial queue — see enrichment.ts)
   if (input.content) {
