@@ -17,6 +17,8 @@
         --accent-dim: #2a4a66;
         --tag: #1f2a36;
         --danger: #ff7a7a;
+        --good: #7ce0a3;
+        --warn: #e7c36b;
       }
       * { box-sizing: border-box; }
       body {
@@ -30,13 +32,20 @@
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 16px;
       }
-      header h1 { margin: 0; font-size: 16px; font-weight: 600; }
-      header input[type="search"] {
-        flex: 1;
-        max-width: 480px;
+      header h1 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; }
+      nav { display: flex; gap: 4px; flex: 1; }
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 6px;
+      }
+      nav a:hover { background: var(--panel-2); color: var(--text); }
+      nav a.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+      input[type="search"], .search-box {
         background: var(--bg);
         color: var(--text);
         border: 1px solid var(--border);
@@ -44,6 +53,7 @@
         padding: 7px 12px;
         font: inherit;
       }
+      header input[type="search"] { width: 280px; }
       .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
       main {
         display: grid;
@@ -53,6 +63,7 @@
         max-width: 1500px;
         margin: 0 auto;
       }
+      .wide { padding: 20px; max-width: 1100px; margin: 0 auto; }
       aside { display: flex; flex-direction: column; gap: 16px; }
       .panel {
         background: var(--panel);
@@ -94,14 +105,17 @@
         color: var(--muted);
         border: 1px solid var(--border);
       }
+      button.ghost:hover { color: var(--text); border-color: var(--accent); }
+      button.danger { background: var(--danger); color: #1a0000; }
+      button.sm { padding: 4px 10px; font-size: 12px; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
       .status { font-size: 11px; color: var(--muted); min-height: 14px; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
       .stat-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 4px 0;
         font-size: 13px;
         cursor: pointer;
         border-radius: 4px;
@@ -113,26 +127,10 @@
       .stat-row .count { color: var(--muted); font-variant-numeric: tabular-nums; }
       .stat-row.active { background: var(--accent-dim); }
 
-      .bignum {
-        font-size: 28px;
-        font-weight: 600;
-        line-height: 1;
-        margin: 4px 0 2px;
-      }
+      .bignum { font-size: 28px; font-weight: 600; line-height: 1; margin: 4px 0 2px; }
 
-      .spark {
-        display: flex;
-        align-items: flex-end;
-        gap: 2px;
-        height: 36px;
-        margin-top: 8px;
-      }
-      .spark .bar {
-        flex: 1;
-        background: var(--accent-dim);
-        border-radius: 2px 2px 0 0;
-        min-height: 2px;
-      }
+      .spark { display: flex; align-items: flex-end; gap: 2px; height: 36px; margin-top: 8px; }
+      .spark .bar { flex: 1; background: var(--accent-dim); border-radius: 2px 2px 0 0; min-height: 2px; }
       .spark .bar:hover { background: var(--accent); }
 
       .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -150,14 +148,7 @@
       .tag.active { background: var(--accent); color: #00121f; font-weight: 600; }
       .tag .n { opacity: 0.6; margin-left: 4px; font-size: 10px; }
 
-      .filter-bar {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-bottom: 14px;
-        min-height: 24px;
-      }
+      .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; min-height: 24px; }
       .pill {
         background: var(--accent-dim);
         color: var(--accent);
@@ -168,15 +159,7 @@
         align-items: center;
         gap: 6px;
       }
-      .pill button {
-        background: transparent;
-        color: var(--accent);
-        border: 0;
-        padding: 0;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-      }
+      .pill button { background: transparent; color: var(--accent); border: 0; padding: 0; cursor: pointer; font-size: 14px; line-height: 1; }
 
       .list { display: flex; flex-direction: column; gap: 12px; }
       .card {
@@ -185,6 +168,8 @@
         border-radius: 8px;
         padding: 14px 16px;
       }
+      .card.click { cursor: pointer; }
+      .card.click:hover { border-color: var(--accent-dim); }
       .card .meta {
         display: flex;
         gap: 8px;
@@ -202,25 +187,13 @@
         max-height: 260px;
         overflow: auto;
       }
-      .card .summary {
-        color: var(--muted);
-        font-style: italic;
-        margin-bottom: 8px;
-        font-size: 13px;
-      }
-      .card .tags {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-        margin-top: 10px;
-        align-items: center;
-      }
-      .badge {
-        background: var(--tag);
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-      }
+      .card .summary { color: var(--muted); font-style: italic; margin-bottom: 8px; font-size: 13px; }
+      .card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+      .badge { background: var(--tag); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+      .badge.good { background: rgba(124, 224, 163, 0.16); color: var(--good); }
+      .badge.warn { background: rgba(231, 195, 107, 0.16); color: var(--warn); }
+      .badge.bad { background: rgba(255, 122, 122, 0.16); color: var(--danger); }
+      .badge.sim { background: var(--accent-dim); color: var(--accent); font-variant-numeric: tabular-nums; }
       .add-tag {
         background: transparent;
         border: 1px dashed var(--border);
@@ -231,109 +204,203 @@
         cursor: pointer;
       }
       .add-tag:hover { border-color: var(--accent); color: var(--accent); }
-      .tag-input {
-        background: var(--bg);
-        border: 1px solid var(--accent);
-        color: var(--text);
-        border-radius: 999px;
-        padding: 2px 10px;
-        font-size: 11px;
-        width: 120px;
-      }
-      .tag-remove {
-        margin-left: 4px;
-        opacity: 0;
-        cursor: pointer;
-      }
+      .tag-input { background: var(--bg); border: 1px solid var(--accent); color: var(--text); border-radius: 999px; padding: 2px 10px; font-size: 11px; width: 120px; }
+      .tag-remove { margin-left: 4px; opacity: 0; cursor: pointer; }
       .tag:hover .tag-remove { opacity: 0.7; }
       .tag-remove:hover { opacity: 1 !important; color: var(--danger); }
 
-      .empty {
-        color: var(--muted);
-        text-align: center;
-        padding: 40px 20px;
-        font-style: italic;
-      }
+      .empty { color: var(--muted); text-align: center; padding: 40px 20px; font-style: italic; }
+      .back { color: var(--muted); text-decoration: none; font-size: 13px; display: inline-block; margin-bottom: 14px; }
+      .back:hover { color: var(--accent); }
+      .view-title { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+      .dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; font-size: 13px; }
+      .dl dt { color: var(--muted); }
+      .dl dd { margin: 0; }
+      .dup-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
+      .dup-pair .content { max-height: 180px; }
+      .dup-mid { display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; }
+      .muted { color: var(--muted); }
+      .section-h { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin: 22px 0 10px; }
     </style>
   </head>
   <body>
     <header>
       <h1>🧠 OpenBrain</h1>
-      <input type="search" id="search" placeholder="Search content…" />
+      <nav id="nav">
+        <a href="#/" data-route="">Dashboard</a>
+        <a href="#/search" data-route="search">Search</a>
+        <a href="#/audit" data-route="audit">Audit</a>
+        <a href="#/duplicates" data-route="duplicates">Duplicates</a>
+      </nav>
       <span class="count" id="count"></span>
     </header>
-    <main>
-      <aside>
-        <div class="panel">
-          <h2>Total memories</h2>
-          <div class="bignum" id="total">—</div>
-          <div class="spark" id="spark"></div>
-          <div class="status" style="margin-top:6px">last 30 days (by source date)</div>
-        </div>
-
-        <div class="panel">
-          <h2>By month</h2>
-          <div class="spark" id="month-spark" style="height:60px"></div>
-          <div class="status" id="coverage" style="margin-top:6px"></div>
-        </div>
-
-        <div class="panel">
-          <h2>New memory</h2>
-          <form id="form">
-            <textarea name="content" required placeholder="What should I remember?"></textarea>
-            <select name="memoryType">
-              <option value="">type: (none)</option>
-              <option value="fact">fact</option>
-              <option value="decision">decision</option>
-              <option value="learning">learning</option>
-              <option value="conversation">conversation</option>
-            </select>
-            <input name="tags" placeholder="tags: project, idea" />
-            <button type="submit">Store</button>
-            <div class="status" id="status"></div>
-          </form>
-        </div>
-
-        <div class="panel">
-          <h2>By type</h2>
-          <div id="by-type"></div>
-        </div>
-
-        <div class="panel">
-          <h2>By source</h2>
-          <div id="by-source"></div>
-        </div>
-
-        <div class="panel">
-          <h2>Top tags</h2>
-          <div class="tag-cloud" id="top-tags"></div>
-        </div>
-      </aside>
-
-      <section>
-        <div class="filter-bar" id="filter-bar"></div>
-        <div class="list" id="list"></div>
-      </section>
-    </main>
+    <div id="view"></div>
 
     <script>
       const state = {
         filters: { tag: null, type: null, source: null, q: null },
         stats: null,
       };
+      let dashTimer = null;
 
       const $ = (id) => document.getElementById(id);
-      const fmt = (iso) => new Date(iso).toLocaleString();
+      const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "");
       const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const pct = (n) => `${(n * 100).toFixed(1)}%`;
 
       function escape(s) {
         return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
         })[c]);
+      }
+
+      // ---- Governance / trust-ladder badges (shared across views) ----
+      function govBadges(m) {
+        const out = [];
+        const rs = m.reviewStatus;
+        const ps = m.provenanceStatus;
+        if (rs) {
+          const cls = rs === "confirmed" ? "good" : rs === "rejected" ? "bad" : "warn";
+          out.push(`<span class="badge ${cls}" title="review status">${escape(rs)}</span>`);
+        }
+        if (ps && ps !== rs) {
+          const cls = ps === "user_confirmed" || ps === "imported" ? "good"
+            : ps === "disputed" || ps === "superseded" ? "bad" : "warn";
+          out.push(`<span class="badge ${cls}" title="provenance">${escape(ps)}</span>`);
+        }
+        if (m.createdBy) out.push(`<span class="badge" title="written by">by ${escape(m.createdBy)}</span>`);
+        if (typeof m.qualityScore === "number")
+          out.push(`<span class="badge ${m.qualityScore < 30 ? "bad" : m.qualityScore < 60 ? "warn" : "good"}" title="quality (derived from trust ladder)">q${m.qualityScore}</span>`);
+        if (typeof m.importance === "number")
+          out.push(`<span class="badge" title="importance (from confidence)">imp ${m.importance}</span>`);
+        if (m.sensitivityTier) out.push(`<span class="badge bad" title="sensitivity tier (visibility)">${escape(m.sensitivityTier)}</span>`);
+        return out.join(" ");
+      }
+
+      // =====================================================================
+      // Router
+      // =====================================================================
+      function parseHash() {
+        const h = location.hash.replace(/^#\/?/, "");
+        const [name, param] = h.split("/");
+        return { name: name || "", param: param || "" };
+      }
+
+      function setActiveNav(name) {
+        for (const a of document.querySelectorAll("#nav a"))
+          a.classList.toggle("active", a.dataset.route === name);
+      }
+
+      async function route() {
+        const { name, param } = parseHash();
+        setActiveNav(name);
+        if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+        $("count").textContent = "";
+        if (name === "" ) return renderDashboard();
+        if (name === "memory") return renderDetail(param);
+        if (name === "search") return renderSearch();
+        if (name === "audit") return renderAudit();
+        if (name === "duplicates") return renderDuplicates();
+        location.hash = "#/";
+      }
+      window.addEventListener("hashchange", route);
+
+      // =====================================================================
+      // Dashboard (original behaviour, preserved)
+      // =====================================================================
+      function renderDashboard() {
+        $("view").innerHTML = `
+          <header style="border:0;padding:0 24px 0;max-width:1500px;margin:0 auto">
+            <input type="search" id="search" placeholder="Filter content…" style="width:100%;max-width:480px;margin:8px 0" />
+          </header>
+          <main>
+            <aside>
+              <div class="panel">
+                <h2>Total memories</h2>
+                <div class="bignum" id="total">—</div>
+                <div class="spark" id="spark"></div>
+                <div class="status" style="margin-top:6px">last 30 days (by source date)</div>
+              </div>
+              <div class="panel">
+                <h2>By month</h2>
+                <div class="spark" id="month-spark" style="height:60px"></div>
+                <div class="status" id="coverage" style="margin-top:6px"></div>
+              </div>
+              <div class="panel">
+                <h2>New memory</h2>
+                <form id="form">
+                  <textarea name="content" required placeholder="What should I remember?"></textarea>
+                  <select name="memoryType">
+                    <option value="">type: (none)</option>
+                    <option value="fact">fact</option>
+                    <option value="decision">decision</option>
+                    <option value="learning">learning</option>
+                    <option value="conversation">conversation</option>
+                  </select>
+                  <input name="tags" placeholder="tags: project, idea" />
+                  <button type="submit">Store</button>
+                  <div class="status" id="status"></div>
+                </form>
+              </div>
+              <div class="panel"><h2>By type</h2><div id="by-type"></div></div>
+              <div class="panel"><h2>By source</h2><div id="by-source"></div></div>
+              <div class="panel"><h2>Top tags</h2><div class="tag-cloud" id="top-tags"></div></div>
+            </aside>
+            <section>
+              <div class="filter-bar" id="filter-bar"></div>
+              <div class="list" id="list"></div>
+            </section>
+          </main>`;
+
+        let searchTimer;
+        $("search").value = state.filters.q || "";
+        $("search").addEventListener("input", (e) => {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            state.filters.q = e.target.value.trim() || null;
+            loadMemories();
+            renderFilterBar();
+          }, 200);
+        });
+
+        $("form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const tags = String(fd.get("tags") || "").split(",").map((t) => t.trim()).filter(Boolean);
+          const body = {
+            content: fd.get("content"),
+            memoryType: fd.get("memoryType") || undefined,
+            tags: tags.length ? tags : undefined,
+          };
+          $("status").textContent = "Storing…";
+          const btn = e.target.querySelector("button[type=submit]");
+          btn.disabled = true;
+          try {
+            const res = await fetch("/api/memories", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error((await res.json()).error || "failed");
+            e.target.reset();
+            $("status").textContent = "Stored.";
+            await Promise.all([loadMemories(), loadStats()]);
+          } catch (err) {
+            $("status").textContent = `Error: ${err.message}`;
+          } finally {
+            btn.disabled = false;
+            setTimeout(() => { const s = $("status"); if (s) s.textContent = ""; }, 3000);
+          }
+        });
+
+        renderFilterBar();
+        loadMemories();
+        loadStats();
+        dashTimer = setInterval(() => {
+          if (parseHash().name !== "") return;
+          loadMemories();
+          loadStats();
+        }, 20000);
       }
 
       function setFilter(key, value) {
@@ -342,63 +409,62 @@
         renderFilterBar();
         renderStatsHighlights();
       }
-
       function clearFilter(key) {
         state.filters[key] = null;
         loadMemories();
         renderFilterBar();
         renderStatsHighlights();
       }
+      window.setFilter = setFilter;
+      window.clearFilter = clearFilter;
 
       function renderFilterBar() {
         const bar = $("filter-bar");
+        if (!bar) return;
         const pills = [];
         for (const [k, v] of Object.entries(state.filters)) {
           if (!v) continue;
-          pills.push(
-            `<span class="pill">${k}: ${escape(v)} <button onclick="clearFilter('${k}')">×</button></span>`
-          );
+          pills.push(`<span class="pill">${k}: ${escape(v)} <button onclick="clearFilter('${k}')">×</button></span>`);
         }
         bar.innerHTML = pills.join("") || '<span style="color:var(--muted);font-size:11px">no filters</span>';
       }
 
       async function loadMemories() {
+        const list = $("list");
+        if (!list) return;
         const params = new URLSearchParams();
         for (const [k, v] of Object.entries(state.filters)) if (v) params.set(k, v);
         params.set("limit", "100");
         const res = await fetch("/api/memories?" + params);
         const rows = await res.json();
-        $("count").textContent = `${rows.length} shown`;
-        const list = $("list");
-        if (!rows.length) {
-          list.innerHTML = '<div class="empty">No memories match your filters.</div>';
-          return;
-        }
-        list.innerHTML = rows.map(renderCard).join("");
+        if ($("count")) $("count").textContent = `${rows.length} shown`;
+        list.innerHTML = rows.length
+          ? rows.map(renderCard).join("")
+          : '<div class="empty">No memories match your filters.</div>';
       }
 
       function renderCard(r) {
         const dateLabel = r.sourceDate
           ? `<span title="Original source date (imported ${fmt(r.createdAt)})" style="color:var(--accent)">${fmt(r.sourceDate)} ◆</span>`
-          : `<span title="Import date (no original source date)">${fmt(r.createdAt)}</span>`;
+          : `<span title="Import date">${fmt(r.createdAt)}</span>`;
         const meta = [
           dateLabel,
-          r.source ? `<span class="badge" onclick="setFilter('source','${escape(r.source)}')" style="cursor:pointer">${escape(r.source)}</span>` : "",
-          r.memoryType ? `<span class="badge" onclick="setFilter('type','${escape(r.memoryType)}')" style="cursor:pointer">${escape(r.memoryType)}</span>` : "",
+          r.source ? `<span class="badge" onclick="event.stopPropagation();setFilter('source','${escape(r.source)}')" style="cursor:pointer">${escape(r.source)}</span>` : "",
+          r.memoryType ? `<span class="badge" onclick="event.stopPropagation();setFilter('type','${escape(r.memoryType)}')" style="cursor:pointer">${escape(r.memoryType)}</span>` : "",
         ].filter(Boolean).join("");
         const tagChips = (r.tags || []).map((t) => `
-          <span class="tag" onclick="setFilter('tag','${escape(t)}')">
+          <span class="tag" onclick="event.stopPropagation();setFilter('tag','${escape(t)}')">
             ${escape(t)}<span class="tag-remove" onclick="event.stopPropagation();removeTag('${r.id}','${escape(t)}')">×</span>
           </span>`).join("");
         const summary = r.summary ? `<div class="summary">${escape(r.summary)}</div>` : "";
         return `
-          <article class="card" data-id="${r.id}">
+          <article class="card click" data-id="${r.id}" onclick="location.hash='#/memory/${r.id}'">
             <div class="meta">${meta}</div>
             ${summary}
             <div class="content">${escape(r.content)}</div>
             <div class="tags">
               ${tagChips}
-              <button class="add-tag" onclick="openAddTag('${r.id}', this)">+ tag</button>
+              <button class="add-tag" onclick="event.stopPropagation();openAddTag('${r.id}', this)">+ tag</button>
             </div>
           </article>`;
       }
@@ -420,144 +486,380 @@
         });
         input.addEventListener("blur", commit);
       };
-
       window.addTag = async (id, tag) => {
         await fetch(`/api/memories/${id}/tags`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
+          method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ add: [tag] }),
         });
         await Promise.all([loadMemories(), loadStats()]);
       };
-
       window.removeTag = async (id, tag) => {
         await fetch(`/api/memories/${id}/tags`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
+          method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ remove: [tag] }),
         });
         await Promise.all([loadMemories(), loadStats()]);
       };
 
-      window.setFilter = setFilter;
-      window.clearFilter = clearFilter;
-
       async function loadStats() {
+        if (!$("total")) return;
         const res = await fetch("/api/stats");
         state.stats = await res.json();
         renderStats();
       }
-
       function renderStats() {
         const s = state.stats;
+        if (!s || !$("total")) return;
         $("total").textContent = s.total.toLocaleString();
-
-        // Sparkline: 30 days
         const days = [];
         const now = new Date();
         for (let i = 29; i >= 0; i--) {
           const d = new Date(now);
           d.setDate(d.getDate() - i);
           const key = d.toISOString().slice(0, 10);
-          const row = s.perDay.find((x) => String(x.day).slice(0, 10) === key);
-          days.push({ day: key, count: row ? row.count : 0 });
+          const r = s.perDay.find((x) => String(x.day).slice(0, 10) === key);
+          days.push({ day: key, count: r ? r.count : 0 });
         }
         const max = Math.max(1, ...days.map((d) => d.count));
-        $("spark").innerHTML = days
-          .map((d) => `<div class="bar" title="${fmtDay(d.day)}: ${d.count}" style="height:${(d.count / max) * 100}%"></div>`)
-          .join("");
-
-        // Monthly histogram
+        $("spark").innerHTML = days.map((d) => `<div class="bar" title="${fmtDay(d.day)}: ${d.count}" style="height:${(d.count / max) * 100}%"></div>`).join("");
         const months = s.perMonth || [];
         const mmax = Math.max(1, ...months.map((m) => m.count));
-        $("month-spark").innerHTML = months
-          .map((m) => `<div class="bar" title="${m.month}: ${m.count}" style="height:${(m.count / mmax) * 100}%"></div>`)
-          .join("") || '<div class="status">no data</div>';
-
+        $("month-spark").innerHTML = months.map((m) => `<div class="bar" title="${m.month}: ${m.count}" style="height:${(m.count / mmax) * 100}%"></div>`).join("") || '<div class="status">no data</div>';
         const cov = s.coverage || { with_source_date: 0, total: s.total };
-        const pct = cov.total ? ((cov.with_source_date / cov.total) * 100).toFixed(0) : 0;
-        $("coverage").textContent = `${cov.with_source_date}/${cov.total} have original source date (${pct}%)`;
-
-        $("by-type").innerHTML = s.byType
-          .map((r) => statRow("type", r.key, r.count))
-          .join("") || '<div class="status">no data</div>';
-        $("by-source").innerHTML = s.bySource
-          .map((r) => statRow("source", r.key, r.count))
-          .join("") || '<div class="status">no data</div>';
-        $("top-tags").innerHTML = s.topTags
-          .map((r) => `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`)
-          .join("") || '<div class="status">no tags yet</div>';
-
+        const cpct = cov.total ? ((cov.with_source_date / cov.total) * 100).toFixed(0) : 0;
+        $("coverage").textContent = `${cov.with_source_date}/${cov.total} have original source date (${cpct}%)`;
         renderStatsHighlights();
       }
-
       function statRow(kind, key, count) {
         const active = state.filters[kind] === key && key !== "(none)";
         const clickable = key !== "(none)";
         const handler = clickable ? `onclick="setFilter('${kind}','${escape(key)}')"` : "";
         return `<div class="stat-row ${active ? "active" : ""}" ${handler}>
-          <span class="key">${escape(key)}</span>
-          <span class="count">${count}</span>
-        </div>`;
+          <span class="key">${escape(key)}</span><span class="count">${count}</span></div>`;
       }
-
       function renderStatsHighlights() {
-        if (!state.stats) return;
-        // Re-render the two stat panels + tag cloud to update active state
-        $("by-type").innerHTML = state.stats.byType.map((r) => statRow("type", r.key, r.count)).join("");
-        $("by-source").innerHTML = state.stats.bySource.map((r) => statRow("source", r.key, r.count)).join("");
-        $("top-tags").innerHTML = state.stats.topTags
-          .map((r) => `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`)
-          .join("");
+        if (!state.stats || !$("by-type")) return;
+        $("by-type").innerHTML = state.stats.byType.map((r) => statRow("type", r.key, r.count)).join("") || '<div class="status">no data</div>';
+        $("by-source").innerHTML = state.stats.bySource.map((r) => statRow("source", r.key, r.count)).join("") || '<div class="status">no data</div>';
+        $("top-tags").innerHTML = state.stats.topTags.map((r) =>
+          `<span class="tag ${state.filters.tag === r.tag ? "active" : ""}" onclick="setFilter('tag','${escape(r.tag)}')">${escape(r.tag)}<span class="n">${r.count}</span></span>`
+        ).join("") || '<div class="status">no tags yet</div>';
       }
 
-      // Search
-      let searchTimer;
-      $("search").addEventListener("input", (e) => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => {
-          state.filters.q = e.target.value.trim() || null;
-          loadMemories();
-          renderFilterBar();
-        }, 200);
-      });
-
-      // Store form
-      $("form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const tags = String(fd.get("tags") || "")
-          .split(",").map((t) => t.trim()).filter(Boolean);
-        const body = {
-          content: fd.get("content"),
-          memoryType: fd.get("memoryType") || undefined,
-          tags: tags.length ? tags : undefined,
-        };
-        $("status").textContent = "Storing…";
-        const btn = e.target.querySelector("button[type=submit]");
-        btn.disabled = true;
-        try {
-          const res = await fetch("/api/memories", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          if (!res.ok) throw new Error((await res.json()).error || "failed");
-          e.target.reset();
-          $("status").textContent = "Stored.";
-          await Promise.all([loadMemories(), loadStats()]);
-        } catch (err) {
-          $("status").textContent = `Error: ${err.message}`;
-        } finally {
-          btn.disabled = false;
-          setTimeout(() => ($("status").textContent = ""), 3000);
+      // =====================================================================
+      // Detail (#/memory/:id) — metadata + inline edit + connections
+      // =====================================================================
+      async function renderDetail(id) {
+        $("view").innerHTML = `<div class="wide"><div class="empty">Loading…</div></div>`;
+        const res = await fetch(`/api/memories/${id}`);
+        if (!res.ok) {
+          $("view").innerHTML = `<div class="wide"><a class="back" href="#/">← back</a><div class="empty">Memory not found.</div></div>`;
+          return;
         }
-      });
+        const m = await res.json();
+        const tagChips = (m.tags || []).map((t) =>
+          `<span class="tag">${escape(t)}<span class="tag-remove" onclick="detailRemoveTag('${m.id}','${escape(t)}')">×</span></span>`
+        ).join("");
+        const people = (m.people || []).map((p) => `<span class="badge">${escape(p)}</span>`).join(" ");
+        const links = (m.linkedMemories || []).map((l) =>
+          `<a class="card click" style="display:block;text-decoration:none;color:inherit" href="#/memory/${l.id}">
+             <div class="meta"><span class="badge sim">${pct(l.similarity)}</span>${l.memoryType ? `<span class="badge">${escape(l.memoryType)}</span>` : ""}<span>${fmt(l.createdAt)}</span></div>
+             <div class="content" style="max-height:80px">${escape(l.content)}</div>
+           </a>`
+        ).join("");
+        const typeOptions = ["", "fact", "decision", "learning", "conversation"].map((t) =>
+          `<option value="${t}" ${m.memoryType === t ? "selected" : ""}>${t || "(none)"}</option>`
+        ).join("");
 
-      renderFilterBar();
-      loadMemories();
-      loadStats();
-      setInterval(() => { loadMemories(); loadStats(); }, 20000);
+        $("view").innerHTML = `
+          <div class="wide">
+            <a class="back" href="#/">← back to dashboard</a>
+            <h2 class="view-title">Memory detail</h2>
+            <div class="panel" style="margin-bottom:16px">
+              <div class="meta card" style="border:0;padding:0;margin-bottom:12px">
+                <span>${m.sourceDate ? fmt(m.sourceDate) + " ◆" : fmt(m.createdAt)}</span>
+                ${m.source ? `<span class="badge">${escape(m.source)}</span>` : ""}
+                ${govBadges(m)}
+              </div>
+              <label>Content</label>
+              <textarea id="d-content" style="min-height:160px">${escape(m.content)}</textarea>
+              <div class="row" style="margin-top:8px">
+                <select id="d-type" style="width:auto">${typeOptions}</select>
+                <button class="sm" id="d-save">Save</button>
+                <span class="status" id="d-status"></span>
+              </div>
+              ${m.summary ? `<div class="summary" style="margin-top:12px">${escape(m.summary)}</div>` : ""}
+              <div class="tags" id="d-tags" style="margin-top:12px">
+                ${tagChips}
+                <button class="add-tag" onclick="openDetailAddTag('${m.id}', this)">+ tag</button>
+              </div>
+            </div>
+            <div class="panel" style="margin-bottom:16px">
+              <h2>Metadata</h2>
+              <dl class="dl">
+                <dt>id</dt><dd style="font-family:ui-monospace,monospace">${m.id}</dd>
+                <dt>created</dt><dd>${fmt(m.createdAt)}</dd>
+                <dt>updated</dt><dd>${fmt(m.updatedAt)}</dd>
+                <dt>can instruct</dt><dd>${m.canUseAsInstruction ? "yes" : "no"}</dd>
+                <dt>people</dt><dd>${people || '<span class="muted">none</span>'}</dd>
+                ${m.supersedes ? `<dt>supersedes</dt><dd><a href="#/memory/${m.supersedes}">${m.supersedes}</a></dd>` : ""}
+              </dl>
+            </div>
+            <div class="panel">
+              <h2>Connections${m.linkedMemories && m.linkedMemories.length ? ` (${m.linkedMemories.length})` : ""}</h2>
+              <div class="list">${links || '<div class="muted">No linked memories.</div>'}</div>
+            </div>
+          </div>`;
+
+        $("d-save").addEventListener("click", async () => {
+          const content = $("d-content").value;
+          const memoryType = $("d-type").value || undefined;
+          $("d-status").textContent = "Saving…";
+          $("d-save").disabled = true;
+          try {
+            const r = await fetch(`/api/memories/${m.id}`, {
+              method: "PUT", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ content, memoryType }),
+            });
+            if (!r.ok) throw new Error((await r.json()).error || "failed");
+            $("d-status").textContent = "Saved (re-enriching…)";
+            setTimeout(() => renderDetail(m.id), 800);
+          } catch (err) {
+            $("d-status").textContent = `Error: ${err.message}`;
+            $("d-save").disabled = false;
+          }
+        });
+      }
+
+      window.detailRemoveTag = async (id, tag) => {
+        await fetch(`/api/memories/${id}/tags`, {
+          method: "PATCH", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ remove: [tag] }),
+        });
+        renderDetail(id);
+      };
+      window.openDetailAddTag = (id, btn) => {
+        const input = document.createElement("input");
+        input.className = "tag-input";
+        input.placeholder = "new tag…";
+        btn.replaceWith(input);
+        input.focus();
+        const commit = async () => {
+          const val = input.value.trim();
+          if (!val) return renderDetail(id);
+          await fetch(`/api/memories/${id}/tags`, {
+            method: "PATCH", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ add: [val] }),
+          });
+          renderDetail(id);
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") renderDetail(id);
+        });
+        input.addEventListener("blur", commit);
+      };
+
+      // =====================================================================
+      // Search (#/search) — semantic search with similarity scores
+      // =====================================================================
+      function renderSearch() {
+        $("view").innerHTML = `
+          <div class="wide">
+            <h2 class="view-title">Semantic search</h2>
+            <form id="s-form" style="flex-direction:row;gap:8px;margin-bottom:16px">
+              <input id="s-q" class="search-box" style="flex:1" placeholder="Search by meaning…" autofocus />
+              <button type="submit">Search</button>
+            </form>
+            <div class="status" id="s-status"></div>
+            <div class="list" id="s-results"></div>
+          </div>`;
+        $("s-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const query = $("s-q").value.trim();
+          if (!query) return;
+          $("s-status").textContent = "Searching…";
+          $("s-results").innerHTML = "";
+          try {
+            const r = await fetch("/api/search", {
+              method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ query, limit: 20 }),
+            });
+            const rows = await r.json();
+            if (!r.ok) throw new Error(rows.error || "failed");
+            $("s-status").textContent = `${rows.length} result(s)`;
+            $("s-results").innerHTML = rows.length
+              ? rows.map(renderSearchCard).join("")
+              : '<div class="empty">No matches.</div>';
+          } catch (err) {
+            $("s-status").textContent = `Error: ${err.message}`;
+          }
+        });
+      }
+      function renderSearchCard(r) {
+        const tags = (r.tags || []).map((t) => `<span class="badge">${escape(t)}</span>`).join(" ");
+        return `
+          <article class="card click" onclick="location.hash='#/memory/${r.id}'">
+            <div class="meta">
+              <span class="badge sim">${pct(r.similarity)} match</span>
+              ${r.memoryType ? `<span class="badge">${escape(r.memoryType)}</span>` : ""}
+              ${r.source ? `<span class="badge">${escape(r.source)}</span>` : ""}
+              <span>${fmt(r.createdAt)}</span>
+              ${govBadges(r)}
+            </div>
+            ${r.summary ? `<div class="summary">${escape(r.summary)}</div>` : ""}
+            <div class="content">${escape(r.content)}</div>
+            ${tags ? `<div class="tags">${tags}</div>` : ""}
+          </article>`;
+      }
+
+      // =====================================================================
+      // Audit (#/audit) — review queue for agent-written / pending evidence
+      // =====================================================================
+      async function renderAudit() {
+        $("view").innerHTML = `
+          <div class="wide">
+            <h2 class="view-title">Audit / review queue</h2>
+            <p class="muted" style="margin-top:-8px">Agent-written evidence and pending memories awaiting a human decision. Confirm promotes a memory to instruction-grade.</p>
+            <div class="status" id="a-status"></div>
+            <div class="list" id="a-list"><div class="empty">Loading…</div></div>
+          </div>`;
+        await loadAudit();
+      }
+      async function loadAudit() {
+        const res = await fetch("/api/audit?limit=100");
+        const rows = await res.json();
+        $("count").textContent = `${rows.length} to review`;
+        const list = $("a-list");
+        if (!list) return;
+        list.innerHTML = rows.length
+          ? rows.map(renderAuditCard).join("")
+          : '<div class="empty">Nothing to review. 🎉</div>';
+      }
+      function renderAuditCard(r) {
+        return `
+          <article class="card" data-id="${r.id}">
+            <div class="meta">
+              <span>${fmt(r.createdAt)}</span>
+              ${r.source ? `<span class="badge">${escape(r.source)}</span>` : ""}
+              ${r.memoryType ? `<span class="badge">${escape(r.memoryType)}</span>` : ""}
+              ${govBadges(r)}
+            </div>
+            ${r.summary ? `<div class="summary">${escape(r.summary)}</div>` : ""}
+            <div class="content">${escape(r.content)}</div>
+            <div class="row" style="margin-top:12px">
+              <button class="sm" onclick="review('${r.id}','confirm')">Confirm</button>
+              <button class="sm ghost" onclick="review('${r.id}','evidence_only')">Evidence only</button>
+              <button class="sm danger" onclick="review('${r.id}','reject')">Reject</button>
+              <a class="back" style="margin:0" href="#/memory/${r.id}">open →</a>
+            </div>
+          </article>`;
+      }
+      window.review = async (id, action) => {
+        const card = document.querySelector(`#a-list .card[data-id="${id}"]`);
+        if (card) card.style.opacity = "0.5";
+        try {
+          const r = await fetch(`/api/memories/${id}/review`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action }),
+          });
+          if (!r.ok) throw new Error((await r.json()).error || "failed");
+          await loadAudit();
+        } catch (err) {
+          if ($("a-status")) $("a-status").textContent = `Error: ${err.message}`;
+          if (card) card.style.opacity = "1";
+        }
+      };
+
+      // =====================================================================
+      // Duplicates (#/duplicates) — exact (fingerprint) + near (vector) pairs
+      // =====================================================================
+      async function renderDuplicates() {
+        $("view").innerHTML = `
+          <div class="wide">
+            <h2 class="view-title">Duplicates</h2>
+            <div class="row" style="margin-bottom:8px">
+              <label for="dup-th">Near-duplicate threshold</label>
+              <input type="range" id="dup-th" min="0.7" max="0.99" step="0.01" value="0.9" style="width:200px" />
+              <span id="dup-thv" class="muted">0.90</span>
+            </div>
+            <div class="status" id="dup-status"></div>
+            <div id="dup-body"><div class="empty">Loading…</div></div>
+          </div>`;
+        const th = $("dup-th");
+        th.addEventListener("input", () => { $("dup-thv").textContent = Number(th.value).toFixed(2); });
+        th.addEventListener("change", () => loadDuplicates(Number(th.value)));
+        await loadDuplicates(0.9);
+      }
+      async function loadDuplicates(threshold) {
+        const res = await fetch(`/api/duplicates?threshold=${threshold}`);
+        const data = await res.json();
+        const body = $("dup-body");
+        if (!body) return;
+        const exact = (data.exact || []).map(renderDupGroup).join("");
+        const near = (data.near || []).map(renderNearPair).join("");
+        body.innerHTML = `
+          <div class="section-h">Exact duplicates (shared content fingerprint)</div>
+          ${exact || '<div class="muted">None.</div>'}
+          <div class="section-h">Near duplicates (vector similarity ≥ ${threshold})</div>
+          ${near || '<div class="muted">None above threshold.</div>'}`;
+      }
+      function renderDupGroup(g) {
+        // Keep the newest member; offer to supersede the older ones.
+        const sorted = [...g.members].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        const keep = sorted[0];
+        const rest = sorted.slice(1);
+        return `
+          <div class="panel" style="margin-bottom:12px">
+            <div class="muted" style="margin-bottom:8px">${g.members.length} memories share content — keeping newest, supersede the rest:</div>
+            ${sorted.map((mem, i) => `
+              <div class="card" style="margin-bottom:8px;${i === 0 ? "border-color:var(--good)" : ""}">
+                <div class="meta">
+                  ${i === 0 ? '<span class="badge good">keep (newest)</span>' : ""}
+                  <span>${fmt(mem.createdAt)}</span>
+                  ${mem.source ? `<span class="badge">${escape(mem.source)}</span>` : ""}
+                  <a class="back" style="margin:0" href="#/memory/${mem.id}">open →</a>
+                  ${i !== 0 ? `<button class="sm danger" onclick="resolveDup('${keep.id}','${mem.id}')">Supersede</button>` : ""}
+                </div>
+                <div class="content" style="max-height:120px">${escape(mem.content)}</div>
+              </div>`).join("")}
+          </div>`;
+      }
+      function renderNearPair(p) {
+        return `
+          <div class="panel dup-pair" style="margin-bottom:12px">
+            <div class="card" style="border:0;padding:0">
+              <div class="meta"><span>${fmt(p.aCreatedAt)}</span><a class="back" style="margin:0" href="#/memory/${p.aId}">open →</a></div>
+              <div class="content" style="max-height:160px">${escape(p.aContent)}</div>
+            </div>
+            <div class="dup-mid">
+              <span class="badge sim">${pct(p.similarity)}</span>
+              <button class="sm" onclick="resolveDup('${p.aId}','${p.bId}')">Keep ◀</button>
+              <button class="sm" onclick="resolveDup('${p.bId}','${p.aId}')">Keep ▶</button>
+            </div>
+            <div class="card" style="border:0;padding:0">
+              <div class="meta"><span>${fmt(p.bCreatedAt)}</span><a class="back" style="margin:0" href="#/memory/${p.bId}">open →</a></div>
+              <div class="content" style="max-height:160px">${escape(p.bContent)}</div>
+            </div>
+          </div>`;
+      }
+      window.resolveDup = async (keepId, supersedeId) => {
+        if ($("dup-status")) $("dup-status").textContent = "Resolving…";
+        try {
+          const r = await fetch("/api/duplicates/resolve", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ keepId, supersedeId }),
+          });
+          if (!r.ok) throw new Error((await r.json()).error || "failed");
+          if ($("dup-status")) $("dup-status").textContent = "Resolved.";
+          await loadDuplicates(Number($("dup-th")?.value || 0.9));
+        } catch (err) {
+          if ($("dup-status")) $("dup-status").textContent = `Error: ${err.message}`;
+        }
+      };
+
+      // ---- boot ----
+      route();
     </script>
   </body>
 </html>

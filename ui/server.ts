@@ -2,7 +2,46 @@ import { desc, isNull, and, sql, eq, ilike } from "drizzle-orm";
 import { db, pg } from "../src/db/client.js";
 import { memories } from "../src/db/schema.js";
 import { storeMemory, StoreMemorySchema } from "../src/tools/StoreMemory.js";
-import { updateMemory } from "../src/tools/UpdateMemory.js";
+import { updateMemory, UpdateMemorySchema } from "../src/tools/UpdateMemory.js";
+import { recallMemory } from "../src/tools/RecallMemory.js";
+import { searchMemory, SearchMemorySchema } from "../src/tools/SearchMemory.js";
+import { reviewMemory, ReviewMemorySchema } from "../src/tools/ReviewMemory.js";
+
+/**
+ * Derive OB1-shaped display fields from our own trust ladder. The OB1 dashboard
+ * thinks in `quality_score` / `importance` / `sensitivity_tier`; we don't have
+ * those columns, so we translate from the governance columns we DO have. Aliases
+ * translate, they don't pretend the taxonomies match (same rule as compat.ts).
+ */
+function governanceView(row: {
+  reviewStatus?: string | null;
+  provenanceStatus?: string | null;
+  createdBy?: string | null;
+  confidence?: number | null;
+  visibility?: string | null;
+}) {
+  const rs = row.reviewStatus ?? null;
+  const ps = row.provenanceStatus ?? null;
+  let qualityScore: number;
+  if (rs === "rejected" || ps === "disputed" || ps === "superseded") qualityScore = 10;
+  else if (rs === "confirmed" || ps === "user_confirmed" || ps === "imported") qualityScore = 90;
+  else if (rs === "evidence_only") qualityScore = 55;
+  else if (rs === "pending" || row.createdBy === "agent") qualityScore = 25;
+  else qualityScore = 60; // historical/NULL governance
+  return {
+    qualityScore,
+    importance: row.confidence != null ? Math.round(row.confidence * 100) : null,
+    sensitivityTier: row.visibility ?? null,
+  };
+}
+
+/** People list from our entities jsonb (mirrors peopleOf() in compat.ts). */
+function peopleOf(entities: unknown): string[] {
+  const e = (entities ?? {}) as Record<string, unknown>;
+  return Array.isArray(e.person) ? (e.person as string[]) : [];
+}
+
+const ID_RE = "[0-9a-f-]{36}";
 
 const PORT = Number(process.env.UI_PORT ?? 6279);
 const indexHtml = await Bun.file(new URL("./index.html", import.meta.url)).text();
@@ -114,6 +153,168 @@ Bun.serve({
         const parsed = StoreMemorySchema.parse({ ...body, source: body.source || "manual" });
         const result = await storeMemory(parsed);
         return json(result, 201);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    // POST /api/search  body: { query, limit?, threshold?, memoryType?, source?, tags? }
+    // Semantic search with similarity scores (OB1 Search page).
+    if (req.method === "POST" && pathname === "/api/search") {
+      try {
+        const body = await req.json();
+        const parsed = SearchMemorySchema.parse(body);
+        const rows = await searchMemory(parsed);
+        const results = rows.map((r) => ({
+          ...r,
+          people: peopleOf(r.entities),
+          ...governanceView(r),
+        }));
+        return json(results);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    // GET /api/audit  — review queue: agent-written evidence + explicitly-pending
+    // memory that a human hasn't yet decided on. This is OB1's "low quality_score"
+    // list, expressed in our trust ladder.
+    if (req.method === "GET" && pathname === "/api/audit") {
+      const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 500);
+      const rows = await pg`
+        SELECT id, content, summary, source, memory_type AS "memoryType", tags, entities,
+               created_at AS "createdAt", source_date AS "sourceDate",
+               provenance_status AS "provenanceStatus", review_status AS "reviewStatus",
+               created_by AS "createdBy", confidence, visibility,
+               requires_user_confirmation AS "requiresUserConfirmation"
+        FROM memories
+        WHERE deleted_at IS NULL
+          AND (
+            review_status = 'pending'
+            OR (created_by = 'agent'
+                AND (review_status IS NULL OR review_status NOT IN ('confirmed', 'rejected', 'evidence_only')))
+          )
+        ORDER BY created_at ASC
+        LIMIT ${limit}
+      `;
+      const out = (rows as any[]).map((r) => ({ ...r, ...governanceView(r) }));
+      return json(out);
+    }
+
+    // GET /api/duplicates?threshold=0.9 — exact (fingerprint) groups + near (vector) pairs.
+    if (req.method === "GET" && pathname === "/api/duplicates") {
+      const threshold = Math.min(Math.max(Number(url.searchParams.get("threshold") ?? 0.9), 0), 1);
+      const groupLimit = 50;
+
+      // Exact duplicates: rows sharing a content_fingerprint (advisory dedup key).
+      const dupRows = (await pg`
+        WITH dup AS (
+          SELECT content_fingerprint
+          FROM memories
+          WHERE deleted_at IS NULL AND content_fingerprint IS NOT NULL
+          GROUP BY content_fingerprint HAVING count(*) > 1
+        )
+        SELECT m.content_fingerprint AS fp, m.id, m.content, m.created_at AS "createdAt",
+               m.source, m.review_status AS "reviewStatus", m.provenance_status AS "provenanceStatus"
+        FROM memories m JOIN dup ON dup.content_fingerprint = m.content_fingerprint
+        WHERE m.deleted_at IS NULL
+        ORDER BY m.content_fingerprint, m.created_at
+      `) as any[];
+      const groupMap = new Map<string, any[]>();
+      for (const r of dupRows) {
+        const arr = groupMap.get(r.fp) ?? [];
+        arr.push({ id: r.id, content: r.content, createdAt: r.createdAt, source: r.source, reviewStatus: r.reviewStatus, provenanceStatus: r.provenanceStatus });
+        groupMap.set(r.fp, arr);
+      }
+      const exact = Array.from(groupMap.entries())
+        .slice(0, groupLimit)
+        .map(([fingerprint, members]) => ({ fingerprint, members }));
+
+      // Near duplicates: high-similarity vector links.
+      const near = (await pg`
+        SELECT l.similarity,
+               l.source_memory_id AS "aId", sa.content AS "aContent", sa.created_at AS "aCreatedAt",
+               l.target_memory_id AS "bId", sb.content AS "bContent", sb.created_at AS "bCreatedAt"
+        FROM memory_links l
+        JOIN memories sa ON sa.id = l.source_memory_id AND sa.deleted_at IS NULL
+        JOIN memories sb ON sb.id = l.target_memory_id AND sb.deleted_at IS NULL
+        WHERE l.similarity >= ${threshold}
+        ORDER BY l.similarity DESC
+        LIMIT 50
+      `) as any[];
+
+      return json({ exact, near, threshold });
+    }
+
+    // POST /api/duplicates/resolve  body: { keepId, supersedeId, notes? }
+    // Supersede the older/duplicate memory via the trust-ladder supersede flow.
+    if (req.method === "POST" && pathname === "/api/duplicates/resolve") {
+      try {
+        const body = (await req.json()) as { keepId?: string; supersedeId?: string; notes?: string };
+        const parsed = ReviewMemorySchema.parse({
+          id: body.keepId,
+          action: "supersede",
+          relatedId: body.supersedeId,
+          notes: body.notes,
+        });
+        const result = await reviewMemory(parsed);
+        if ("error" in result) return json(result, 400);
+        return json(result);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    // POST /api/memories/:id/review  body: { action, notes?, relatedId? }
+    const reviewMatch = pathname.match(new RegExp(`^/api/memories/(${ID_RE})/review$`, "i"));
+    if (req.method === "POST" && reviewMatch) {
+      try {
+        const body = await req.json();
+        const parsed = ReviewMemorySchema.parse({ ...body, id: reviewMatch[1] });
+        const result = await reviewMemory(parsed);
+        if ("error" in result) return json(result, 400);
+        return json(result);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    // GET /api/memories/:id — full detail incl. governance + linked memories.
+    const detailMatch = pathname.match(new RegExp(`^/api/memories/(${ID_RE})$`, "i"));
+    if (req.method === "GET" && detailMatch) {
+      const id = detailMatch[1];
+      const m = await recallMemory({ id });
+      if ("error" in m) return json(m, 404);
+      // Linked (related) memories from the similarity-link table.
+      const links = (await pg`
+        SELECT source_memory_id AS s, target_memory_id AS t, similarity
+        FROM memory_links
+        WHERE source_memory_id = ${id} OR target_memory_id = ${id}
+        ORDER BY similarity DESC
+        LIMIT 20
+      `) as any[];
+      const linkedIds = links.map((l) => (l.s === id ? l.t : l.s));
+      let linkedMemories: any[] = [];
+      if (linkedIds.length) {
+        const linkedRows = (await pg`
+          SELECT id, content, memory_type AS "memoryType", created_at AS "createdAt"
+          FROM memories WHERE id = ANY(${linkedIds}) AND deleted_at IS NULL
+        `) as any[];
+        const simById = new Map(links.map((l) => [l.s === id ? l.t : l.s, Number(l.similarity)]));
+        linkedMemories = linkedRows.map((r) => ({ ...r, similarity: simById.get(r.id) ?? 0 }))
+          .sort((a, b) => b.similarity - a.similarity);
+      }
+      return json({ ...m, people: peopleOf(m.entities), ...governanceView(m), linkedMemories });
+    }
+
+    // PUT /api/memories/:id — inline edit (content / type / tags).
+    if (req.method === "PUT" && detailMatch) {
+      try {
+        const body = await req.json();
+        const parsed = UpdateMemorySchema.parse({ ...body, id: detailMatch[1] });
+        const result = await updateMemory(parsed);
+        if ("error" in result) return json(result, 404);
+        return json(result);
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }

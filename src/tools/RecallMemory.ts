@@ -20,6 +20,17 @@ export async function recallMemory(input: z.infer<typeof RecallMemorySchema>) {
       entities: memories.entities,
       createdAt: memories.createdAt,
       updatedAt: memories.updatedAt,
+      sourceDate: memories.sourceDate,
+      // Governance / trust-ladder columns — surfaced for the Detail view.
+      provenanceStatus: memories.provenanceStatus,
+      reviewStatus: memories.reviewStatus,
+      createdBy: memories.createdBy,
+      confidence: memories.confidence,
+      canUseAsInstruction: memories.canUseAsInstruction,
+      canUseAsEvidence: memories.canUseAsEvidence,
+      requiresUserConfirmation: memories.requiresUserConfirmation,
+      visibility: memories.visibility,
+      supersedes: memories.supersedes,
     })
     .from(memories)
     .where(and(eq(memories.id, input.id), isNull(memories.deletedAt)));
