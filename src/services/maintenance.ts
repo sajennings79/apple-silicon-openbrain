@@ -100,36 +100,45 @@ export async function purgeSoftDeleted(olderThanDays = 30): Promise<PurgeReport>
     purgedRows += deleted.count;
   }
 
-  // Pass 2: retention tombstones — shrink, never delete. The '[expired]'
-  // sentinel also makes the pass idempotent (already-shrunk rows don't match).
-  const shrunk = (await pg`
-    UPDATE memories
-    SET content = '[expired]', summary = NULL, embedding = NULL,
-        tags = '{}', entities = '{}'::jsonb, updated_at = NOW()
-    WHERE deleted_at IS NOT NULL
-      AND deleted_at < NOW() - make_interval(days => ${olderThanDays})
-      AND expires_at IS NOT NULL
-      AND content <> '[expired]'
-    RETURNING id
-  `) as { id: string }[];
-  if (shrunk.length > 0) {
-    const ids = shrunk.map((r) => r.id);
+  // Pass 2: retention tombstones — shrink, never delete. Batched like Pass 1
+  // so a large backlog can't hold row locks for one long statement; the
+  // '[expired]' sentinel makes the pass idempotent (shrunk rows don't match).
+  let shrunkTombstones = 0;
+  for (;;) {
+    const batch = (await pg`
+      SELECT id FROM memories
+      WHERE deleted_at IS NOT NULL
+        AND deleted_at < NOW() - make_interval(days => ${olderThanDays})
+        AND expires_at IS NOT NULL
+        AND content <> '[expired]'
+      LIMIT 1000
+    `) as { id: string }[];
+    if (batch.length === 0) break;
+    const ids = batch.map((r) => r.id);
+
     const links = await pg`
       DELETE FROM memory_links
       WHERE source_memory_id = ANY(${ids}::uuid[]) OR target_memory_id = ANY(${ids}::uuid[])
     `;
     purgedLinks += links.count;
+    const upd = await pg`
+      UPDATE memories
+      SET content = '[expired]', summary = NULL, embedding = NULL,
+          tags = '{}', entities = '{}'::jsonb, updated_at = NOW()
+      WHERE id = ANY(${ids}::uuid[])
+    `;
+    shrunkTombstones += upd.count;
   }
 
-  if (purgedRows > 0 || shrunk.length > 0) {
+  if (purgedRows > 0 || shrunkTombstones > 0) {
     console.log(
-      `[maintenance] purged ${purgedRows} rows, shrunk ${shrunk.length} tombstones — consider running VACUUM ANALYZE memories;`,
+      `[maintenance] purged ${purgedRows} rows, shrunk ${shrunkTombstones} tombstones — consider running VACUUM ANALYZE memories;`,
     );
   }
   return {
     purgedRows,
     purgedLinks,
-    shrunkTombstones: shrunk.length,
+    shrunkTombstones,
     elapsedMs: Date.now() - startedAt,
   };
 }

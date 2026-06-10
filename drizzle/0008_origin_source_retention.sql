@@ -6,7 +6,7 @@
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS origin_source_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_memories_origin_source
-  ON memories (origin_source_id) WHERE origin_source_id IS NOT NULL;
+  ON memories (origin_source_id) WHERE origin_source_id IS NOT NULL AND deleted_at IS NULL;
 
 -- Retention sweeper scan: live rows with an expiry.
 CREATE INDEX IF NOT EXISTS idx_memories_expires

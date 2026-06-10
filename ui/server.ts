@@ -304,11 +304,13 @@ Bun.serve({
         const tag = (body.tag ?? "").trim();
         if (!tag) return json({ error: "tag required" }, 400);
         // Idempotent: rows already carrying the tag are skipped (affected may
-        // be less than expectedCount — that's correct, not drift).
+        // be less than expectedCount — that's correct, not drift). The
+        // remove-then-append keeps the array duplicate-free even if a
+        // concurrent writer added the tag between the WHERE check and the SET.
         affected = await db
           .update(memories)
           .set({
-            tags: sql`array_append(coalesce(${memories.tags}, '{}'), ${tag})`,
+            tags: sql`array_append(array_remove(coalesce(${memories.tags}, '{}'), ${tag}), ${tag})`,
             updatedAt: new Date(),
           })
           .where(and(...conds, sql`NOT (${tag} = ANY(coalesce(${memories.tags}, '{}')))`))

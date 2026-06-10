@@ -78,7 +78,7 @@ export const memories = pgTable(
       .where(sql`${table.supersedes} IS NOT NULL`),
     index("idx_memories_origin_source")
       .on(table.originSourceId)
-      .where(sql`${table.originSourceId} IS NOT NULL`),
+      .where(sql`${table.originSourceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
     // Retention sweeper scan (live rows with an expiry) and purge scan.
     index("idx_memories_expires")
       .on(table.expiresAt)
