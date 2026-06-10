@@ -234,6 +234,8 @@
         <a href="#/search" data-route="search">Search</a>
         <a href="#/audit" data-route="audit">Audit</a>
         <a href="#/duplicates" data-route="duplicates">Duplicates</a>
+        <a href="#/sources" data-route="sources">Sources</a>
+        <a href="#/maintenance" data-route="maintenance">Maintenance</a>
       </nav>
       <span class="count" id="count"></span>
     </header>
@@ -241,7 +243,8 @@
 
     <script>
       const state = {
-        filters: { tag: null, type: null, source: null, q: null },
+        filters: { tag: null, type: null, source: null, q: null, sid: null },
+        sidName: null, // display label for the sid (origin source) filter pill
         stats: null,
       };
       let dashTimer = null;
@@ -312,6 +315,26 @@
           case "detail-addtag": openDetailAddTag(d.id, t); break;
           case "review": review(d.id, d.action); break;
           case "resolvedup": resolveDup(d.keep, d.supersede); break;
+          case "src-new": editingSourceId = "new"; renderSourceList(); break;
+          case "src-cancel": editingSourceId = null; renderSourceList(); break;
+          case "src-edit": editingSourceId = d.id; renderSourceList(); break;
+          case "src-toggle": srcToggle(d.id, d.enabled === "true"); break;
+          case "src-sync": srcSync(d.id, t); break;
+          case "src-del": srcDelete(d.id); break;
+          case "src-pollall": srcPollAll(); break;
+          case "src-memories":
+            state.filters.sid = d.id;
+            state.sidName = d.name;
+            location.hash = "#/";
+            break;
+          case "mx-sweep": mxAction("sweep", "Sweep expired memories now?"); break;
+          case "mx-purge": mxAction("purge", "Permanently purge soft-deleted memories older than 30 days? This cannot be undone."); break;
+          case "mx-dedup": mxAction("resolve-exact-duplicates", "Resolve all exact-duplicate groups (keep newest/confirmed, supersede the rest)?"); break;
+          case "mx-enrich": mxEnrich(true); break;
+          case "mx-enrich-stop": mxEnrich(false); break;
+          case "bulk-delete": bulkOp("delete"); break;
+          case "bulk-tag": bulkOp("add-tag"); break;
+          case "bulk-expiry": bulkOp("set-expiry"); break;
         }
       }
       document.addEventListener("click", (e) => {
@@ -353,6 +376,8 @@
         if (name === "search") return renderSearch();
         if (name === "audit") return renderAudit();
         if (name === "duplicates") return renderDuplicates();
+        if (name === "sources") return renderSources();
+        if (name === "maintenance") return renderMaintenance();
         location.hash = "#/";
       }
       window.addEventListener("hashchange", route);
@@ -474,9 +499,18 @@
         const pills = [];
         for (const [k, v] of Object.entries(state.filters)) {
           if (!v) continue;
-          pills.push(`<span class="pill">${escape(k)}: ${escape(v)} <button data-act="clearfilter" data-key="${escape(k)}">×</button></span>`);
+          const label = k === "sid" ? `feed: ${state.sidName || v.slice(0, 8)}` : `${k}: ${v}`;
+          pills.push(`<span class="pill">${escape(label)} <button data-act="clearfilter" data-key="${escape(k)}">×</button></span>`);
         }
-        bar.innerHTML = pills.join("") || '<span style="color:var(--muted);font-size:11px">no filters</span>';
+        // Bulk actions apply to EVERYTHING matching the active filters (not
+        // just the rows shown) — only offered when at least one filter is set.
+        const bulk = pills.length
+          ? `<span style="flex:1"></span>
+             <button class="sm ghost" data-act="bulk-tag">Tag all…</button>
+             <button class="sm ghost" data-act="bulk-expiry">Set expiry on all…</button>
+             <button class="sm danger" data-act="bulk-delete">Delete all…</button>`
+          : "";
+        bar.innerHTML = (pills.join("") || '<span style="color:var(--muted);font-size:11px">no filters</span>') + bulk;
       }
 
       async function loadMemories() {
@@ -573,6 +607,65 @@
           await Promise.all([loadMemories(), loadStats()]);
         } catch (err) {
           flashStatus("status", `Remove tag failed: ${err.message}`);
+        }
+      }
+
+      // =====================================================================
+      // Bulk operations on the active filters
+      // =====================================================================
+      async function bulkOp(action) {
+        const filters = {};
+        for (const [k, v] of Object.entries(state.filters)) if (v) filters[k] = v;
+        if (!Object.keys(filters).length) return;
+
+        let tag = null;
+        let expiresInDays;
+        if (action === "add-tag") {
+          tag = prompt("Tag to add to ALL matching memories:");
+          if (!tag || !tag.trim()) return;
+          tag = tag.trim();
+        }
+        if (action === "set-expiry") {
+          const raw = prompt("Expire ALL matching memories after how many days? (blank clears expiry)");
+          if (raw === null) return;
+          expiresInDays = raw.trim() === "" ? null : Number(raw);
+          if (expiresInDays !== null && (!Number.isFinite(expiresInDays) || expiresInDays <= 0)) {
+            flashStatus("status", "Invalid number of days.");
+            return;
+          }
+        }
+
+        try {
+          const pres = await fetch("/api/memories/bulk-preview", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ filters }),
+          });
+          if (!pres.ok) throw new Error(await errMsg(pres));
+          const { count } = await pres.json();
+          if (!count) { flashStatus("status", "No matching memories."); return; }
+
+          const desc = Object.entries(filters)
+            .map(([k, v]) => (k === "sid" ? `feed=${state.sidName || v.slice(0, 8)}` : `${k}=${v}`))
+            .join(", ");
+          const verb = action === "delete" ? "Delete"
+            : action === "add-tag" ? `Add tag "${tag}" to`
+            : expiresInDays === null ? "Clear expiry on" : `Expire in ${expiresInDays}d:`;
+          if (!confirm(`${verb} ${count} memories matching [${desc}]?`)) return;
+
+          const res = await fetch("/api/memories/bulk", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ filters, action, tag, expiresInDays, expectedCount: count }),
+          });
+          if (res.status === 409) {
+            flashStatus("status", "Results changed since preview — try again.");
+            return;
+          }
+          if (!res.ok) throw new Error(await errMsg(res));
+          const data = await res.json();
+          flashStatus("status", `Bulk ${action}: ${data.affected} memories affected.`);
+          await Promise.all([loadMemories(), loadStats()]);
+        } catch (err) {
+          flashStatus("status", `Bulk ${action} failed: ${err.message}`);
         }
       }
 
@@ -954,6 +1047,345 @@
           await loadDuplicates(Number($("dup-th")?.value || 0.9));
         } catch (err) {
           if ($("dup-status")) $("dup-status").textContent = `Error: ${err.message}`;
+        }
+      }
+
+      // =====================================================================
+      // Sources (#/sources)
+      // =====================================================================
+      let sourcesCache = [];
+      let editingSourceId = null; // null | uuid | "new"
+      let lastSyncReport = null; // { id, text } survives the re-render after a sync
+
+      const rel = (iso) => {
+        if (!iso) return "never";
+        const s = Math.round((Date.now() - new Date(iso)) / 1000);
+        if (s < 60) return `${s}s ago`;
+        if (s < 3600) return `${Math.round(s / 60)}m ago`;
+        if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+        return `${Math.round(s / 86400)}d ago`;
+      };
+      const fmtInterval = (sec) => (sec < 3600 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`);
+
+      // lastError outranks freshness: syncDueSources stamps lastSyncedAt as a
+      // claim even when the sync then fails, so "recently synced" can be a lie.
+      function sourceHealth(s) {
+        if (s.lastError) return { cls: "bad", label: "error" };
+        if (!s.enabled) return { cls: "warn", label: "off" };
+        if (!s.lastSyncedAt || Date.now() - new Date(s.lastSyncedAt) > 2 * s.intervalSeconds * 1000)
+          return { cls: "warn", label: "stale" };
+        return { cls: "good", label: "ok" };
+      }
+
+      async function renderSources() {
+        editingSourceId = null;
+        $("view").innerHTML = `
+          <div class="wide">
+            <h2 class="view-title">Sources</h2>
+            <div class="row" style="margin-bottom:14px">
+              <button class="sm" data-act="src-new">+ Add source</button>
+              <button class="sm ghost" data-act="src-pollall">Sync all due</button>
+              <span class="status" id="src-status"></span>
+            </div>
+            <div id="src-form-slot"></div>
+            <div class="list" id="src-list"><div class="empty">Loading…</div></div>
+          </div>`;
+        await loadSources();
+      }
+
+      async function loadSources() {
+        try {
+          const res = await fetch("/api/sources");
+          if (!res.ok) throw new Error(await errMsg(res));
+          sourcesCache = await res.json();
+          if ($("count")) $("count").textContent = `${sourcesCache.length} sources`;
+          renderSourceList();
+        } catch (err) {
+          const l = $("src-list");
+          if (l) l.innerHTML = `<div class="empty">Failed to load sources: ${escape(err.message)}</div>`;
+        }
+      }
+
+      function renderSourceList() {
+        const list = $("src-list");
+        if (!list) return;
+        $("src-form-slot").innerHTML = editingSourceId === "new" ? sourceForm(null) : "";
+        list.innerHTML = sourcesCache.length
+          ? sourcesCache.map(renderSourceCard).join("")
+          : '<div class="empty">No sources yet. Add an RSS feed, watched page, or mail account.</div>';
+        bindSourceForm();
+      }
+
+      function renderSourceCard(s) {
+        if (editingSourceId === s.id) return sourceForm(s);
+        const h = sourceHealth(s);
+        const cfg = s.config || {};
+        const target = cfg.feedUrl || cfg.url || cfg.account || "";
+        const report = lastSyncReport && lastSyncReport.id === s.id ? lastSyncReport.text : "";
+        return `
+          <article class="card">
+            <div class="meta">
+              <span class="badge ${h.cls}">${h.label}</span>
+              <span class="badge">${escape(s.kind)}</span>
+              <span>synced ${escape(rel(s.lastSyncedAt))}</span>
+              <span>every ${escape(fmtInterval(s.intervalSeconds))}</span>
+              ${cfg.retentionDays ? `<span class="badge warn" title="ingested memories expire after this many days">${escape(String(cfg.retentionDays))}d retention</span>` : ""}
+              <span class="badge sim click" ${ACT} data-act="src-memories" data-id="${escape(s.id)}" data-name="${escape(s.name)}" title="show memories from this source">${s.memoryCount ?? 0} memories</span>
+            </div>
+            <div style="font-weight:600">${escape(s.name)}</div>
+            <div class="muted" style="font-size:12px;word-break:break-all">${escape(target)}</div>
+            ${s.lastError ? `<div style="color:var(--danger);font-size:12px;margin-top:6px;word-break:break-word">last error: ${escape(s.lastError)}</div>` : ""}
+            <div class="row" style="margin-top:10px">
+              <button class="sm" data-act="src-sync" data-id="${escape(s.id)}">Sync now</button>
+              <button class="sm ghost" data-act="src-toggle" data-id="${escape(s.id)}" data-enabled="${s.enabled}">${s.enabled ? "Disable" : "Enable"}</button>
+              <button class="sm ghost" data-act="src-edit" data-id="${escape(s.id)}">Edit</button>
+              <button class="sm danger" data-act="src-del" data-id="${escape(s.id)}">Delete</button>
+              <span class="status">${escape(report)}</span>
+            </div>
+          </article>`;
+      }
+
+      function sourceForm(s) {
+        const cfg = (s && s.config) || {};
+        const kind = s ? s.kind : "rss";
+        const v = (x) => escape(x ?? "");
+        return `
+          <div class="panel" style="margin-bottom:12px">
+            <h2>${s ? "Edit source" : "New source"}</h2>
+            <form id="src-form" data-id="${s ? escape(s.id) : ""}">
+              <div class="row">
+                <select name="kind" id="src-kind" ${s ? "disabled" : ""} style="width:auto">
+                  ${["rss", "webpage", "mail"].map((k) => `<option value="${k}" ${kind === k ? "selected" : ""}>${k}</option>`).join("")}
+                </select>
+                <input name="name" placeholder="name" required value="${s ? v(s.name) : ""}" style="flex:1" />
+              </div>
+              <div data-kind-field="rss">
+                <label>feed URL</label>
+                <input name="feedUrl" value="${v(cfg.feedUrl ?? cfg.url)}" placeholder="https://example.com/feed.xml" />
+              </div>
+              <div data-kind-field="webpage">
+                <label>page URL (article links on it are ingested)</label>
+                <input name="url" value="${v(cfg.url)}" placeholder="https://example.com/news" />
+              </div>
+              <div data-kind-field="mail">
+                <label>account</label>
+                <input name="account" value="${v(cfg.account)}" placeholder="you@gmail.com" />
+                <label>gmail query</label>
+                <input name="query" value="${v(cfg.query)}" placeholder="newer_than:1d -in:spam -in:trash" />
+                <label>max messages per sync</label>
+                <input name="maxMessages" type="number" min="1" value="${v(cfg.maxMessages)}" />
+                <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="followLinks" style="width:auto" ${cfg.followLinks ? "checked" : ""} /> follow links in bodies</label>
+              </div>
+              <div class="row">
+                <div style="flex:1"><label>interval (seconds)</label><input name="intervalSeconds" type="number" min="60" max="86400" value="${s ? s.intervalSeconds : 3600}" /></div>
+                <div style="flex:1"><label>retention (days, blank = keep forever)</label><input name="retentionDays" type="number" min="1" value="${v(cfg.retentionDays)}" /></div>
+              </div>
+              <div class="row">
+                <button type="submit">${s ? "Save" : "Create"}</button>
+                <button type="button" class="ghost" data-act="src-cancel">Cancel</button>
+                <span class="status" id="src-form-status"></span>
+              </div>
+            </form>
+          </div>`;
+      }
+
+      function bindSourceForm() {
+        const form = $("src-form");
+        if (!form) return;
+        const kindSel = $("src-kind");
+        const showKindFields = () => {
+          for (const el of form.querySelectorAll("[data-kind-field]"))
+            el.style.display = el.dataset.kindField === kindSel.value ? "" : "none";
+        };
+        kindSel.addEventListener("change", showKindFields);
+        showKindFields();
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const fd = new FormData(form);
+          const kind = kindSel.value;
+          const config = {};
+          if (kind === "rss") config.feedUrl = String(fd.get("feedUrl") || "").trim();
+          if (kind === "webpage") config.url = String(fd.get("url") || "").trim();
+          if (kind === "mail") {
+            config.account = String(fd.get("account") || "").trim();
+            const q = String(fd.get("query") || "").trim();
+            if (q) config.query = q;
+            const mm = Number(fd.get("maxMessages"));
+            if (mm > 0) config.maxMessages = mm;
+            if (fd.get("followLinks")) config.followLinks = true;
+          }
+          const rd = Number(fd.get("retentionDays"));
+          if (rd > 0) config.retentionDays = rd;
+          const body = {
+            name: String(fd.get("name") || "").trim(),
+            intervalSeconds: Number(fd.get("intervalSeconds")) || 3600,
+            config,
+          };
+          const id = form.dataset.id;
+          if (!id) body.kind = kind;
+          try {
+            const res = await fetch(id ? `/api/sources/${id}` : "/api/sources", {
+              method: id ? "PATCH" : "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(await errMsg(res));
+            editingSourceId = null;
+            await loadSources();
+          } catch (err) {
+            const st = $("src-form-status");
+            if (st) st.textContent = `Error: ${err.message}`;
+          }
+        });
+      }
+
+      async function srcToggle(id, enabled) {
+        try {
+          const res = await fetch(`/api/sources/${id}`, {
+            method: "PATCH", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ enabled: !enabled }),
+          });
+          if (!res.ok) throw new Error(await errMsg(res));
+          await loadSources();
+        } catch (err) {
+          flashStatus("src-status", `Toggle failed: ${err.message}`);
+        }
+      }
+
+      async function srcSync(id, btn) {
+        btn.disabled = true;
+        lastSyncReport = { id, text: "syncing…" };
+        renderSourceList();
+        try {
+          const res = await fetch(`/api/sources/${id}/sync`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          const r = data.report || {};
+          lastSyncReport = {
+            id,
+            text: res.ok
+              ? `${r.ingested ?? 0} ingested, ${r.duplicates ?? 0} duplicates, ${((r.elapsedMs ?? 0) / 1000).toFixed(1)}s`
+              : `failed: ${data.error || r.error || `HTTP ${res.status}`}`,
+          };
+        } catch (err) {
+          lastSyncReport = { id, text: `failed: ${err.message}` };
+        }
+        await loadSources();
+      }
+
+      async function srcPollAll() {
+        flashStatus("src-status", "Triggering sync of all due sources…");
+        try {
+          const res = await fetch("/api/sources/poll-due", { method: "POST" });
+          if (!res.ok) throw new Error(await errMsg(res));
+          flashStatus("src-status", "Sync started in background.");
+        } catch (err) {
+          flashStatus("src-status", `Failed: ${err.message}`);
+        }
+      }
+
+      async function srcDelete(id) {
+        const s = sourcesCache.find((x) => x.id === id);
+        if (!confirm(`Delete source "${s ? s.name : id}"? Its memories are kept.`)) return;
+        try {
+          const res = await fetch(`/api/sources/${id}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(await errMsg(res));
+          await loadSources();
+        } catch (err) {
+          flashStatus("src-status", `Delete failed: ${err.message}`);
+        }
+      }
+
+      // =====================================================================
+      // Maintenance (#/maintenance)
+      // =====================================================================
+      let mxTimer = null;
+
+      async function renderMaintenance() {
+        $("view").innerHTML = `
+          <div class="wide">
+            <h2 class="view-title">Maintenance</h2>
+            <p class="muted" style="margin-top:-8px">Data hygiene: retention sweep, purge, enrichment backlog, duplicate cleanup. Sweep + purge also run automatically once a day.</p>
+            <div class="status" id="mx-status"></div>
+            <div id="mx-panels"><div class="empty">Loading…</div></div>
+          </div>`;
+        await loadMaintenance();
+      }
+
+      async function loadMaintenance() {
+        const panels = $("mx-panels");
+        if (!panels) return;
+        let s;
+        try {
+          const res = await fetch("/api/maintenance/stats");
+          if (!res.ok) throw new Error(await errMsg(res));
+          s = await res.json();
+        } catch (err) {
+          panels.innerHTML = `<div class="empty">Failed to load stats: ${escape(err.message)}</div>`;
+          return;
+        }
+        const panel = (title, big, desc, actions) => `
+          <div class="panel" style="margin-bottom:12px">
+            <h2>${escape(title)}</h2>
+            <div class="bignum">${escape(String(big))}</div>
+            <div class="muted" style="font-size:12px;margin:4px 0 10px">${desc}</div>
+            <div class="row">${actions}</div>
+          </div>`;
+        panels.innerHTML = `
+          ${panel("Expired, pending sweep", s.expiredPending,
+            "Live memories past their retention expiry (promoted/confirmed memories are exempt). Sweep soft-deletes them.",
+            `<button class="sm" data-act="mx-sweep" ${s.expiredPending ? "" : "disabled"}>Sweep now</button>`)}
+          ${panel("Purgeable soft-deletes", s.purgeable,
+            "User-deleted memories older than 30 days. Purge removes them permanently (audit log is kept). Retention tombstones are shrunk, not removed.",
+            `<button class="sm danger" data-act="mx-purge" ${s.purgeable || s.shrinkableTombstones ? "" : "disabled"}>Purge now</button>
+             <span class="muted" style="font-size:12px">${escape(String(s.shrinkableTombstones))} tombstones to shrink</span>`)}
+          ${panel("Unenriched memories", s.unenriched,
+            "Memories without a summary. Enrichment runs the existing backlog script (sequential, GPU-safe) — it can take hours and is safe to stop and resume.",
+            s.enrichRunning
+              ? `<button class="sm danger" data-act="mx-enrich-stop">Stop</button><span class="badge warn">running…</span>`
+              : `<button class="sm" data-act="mx-enrich" ${s.unenriched ? "" : "disabled"}>Enrich backlog</button>`)}
+          ${panel("Exact-duplicate groups", s.dupGroups,
+            "Groups of live memories sharing a content fingerprint. Resolve keeps the newest (or confirmed/user-written) member and supersedes the rest.",
+            `<button class="sm" data-act="mx-dedup" ${s.dupGroups ? "" : "disabled"}>Resolve all</button>`)}
+          ${panel("memories table size", s.tableSize,
+            "Total on-disk size including indexes. After a large purge, run <code>VACUUM ANALYZE memories;</code> in psql to reclaim space.",
+            "")}`;
+        // Poll while the enrich script runs so the count ticks down live.
+        if (mxTimer) { clearInterval(mxTimer); mxTimer = null; }
+        if (s.enrichRunning) {
+          mxTimer = setInterval(() => {
+            if (parseHash().name !== "maintenance") { clearInterval(mxTimer); mxTimer = null; return; }
+            loadMaintenance();
+          }, 10000);
+        }
+      }
+
+      async function mxAction(endpoint, confirmMsg) {
+        if (confirmMsg && !confirm(confirmMsg)) return;
+        flashStatus("mx-status", "Working…");
+        try {
+          const res = await fetch(`/api/maintenance/${endpoint}`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          const summary = Object.entries(data)
+            .filter(([k, v]) => typeof v === "number" && k !== "elapsedMs")
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+          flashStatus("mx-status", `Done — ${summary || "ok"}`);
+          await loadMaintenance();
+        } catch (err) {
+          flashStatus("mx-status", `Error: ${err.message}`);
+        }
+      }
+
+      async function mxEnrich(start) {
+        try {
+          const res = await fetch(`/api/maintenance/enrich-backlog${start ? "" : "/stop"}`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          flashStatus("mx-status", start ? "Enrichment started." : "Enrichment stopped.");
+          await loadMaintenance();
+        } catch (err) {
+          flashStatus("mx-status", `Error: ${err.message}`);
         }
       }
 

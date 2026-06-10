@@ -5,6 +5,7 @@ import { syncRssSource } from "./rss.js";
 import { syncMailSource } from "./mail.js";
 import { scrapeUrl } from "./scrape.js";
 import { ingestUrl } from "./ingest.js";
+import { expiryFor } from "./retention.js";
 
 export interface SyncReport {
   sourceId: string;
@@ -33,6 +34,7 @@ async function dispatch(source: SourceRow): Promise<{ ingested: number; duplicat
 
 interface WebpageConfig {
   url?: string;
+  retentionDays?: number;
 }
 
 // Extract article links from a scraped landing page.
@@ -41,7 +43,6 @@ interface WebpageConfig {
 const SKIP_WEBPAGE_PATTERNS = [
   /\/(tag|category|author|page|feed|rss|sitemap|search|login|signup|about|contact|privacy|terms)\b/i,
   /\?p=\d/,
-  /#/,
   /\.(png|jpg|jpeg|gif|svg|pdf|zip)(\?|$)/i,
 ];
 
@@ -59,7 +60,10 @@ async function syncWebpageSource(source: SourceRow): Promise<{ ingested: number;
   const links: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = linkRe.exec(scraped.markdown)) !== null) {
-    const href = m[2];
+    // Strip the fragment so anchor links dedup to (and ingest) the base page
+    // instead of being skipped or scraped once per section.
+    const href = m[2].split("#")[0];
+    if (!href) continue;
     // Only follow links on the same origin (article URLs, not external)
     try {
       const u = new URL(href);
@@ -71,11 +75,12 @@ async function syncWebpageSource(source: SourceRow): Promise<{ ingested: number;
     links.push(href);
   }
 
+  const expiresAt = expiryFor(source.config);
   let ingested = 0;
   let duplicates = 0;
   for (const link of links) {
     try {
-      const result = await ingestUrl(link);
+      const result = await ingestUrl(link, { originSourceId: source.id, expiresAt });
       if (result.status === "created") ingested++;
       else duplicates++;
     } catch (err) {

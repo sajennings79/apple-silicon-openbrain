@@ -53,7 +53,7 @@ test("capture_thought stores as evidence, then dedupes on identical content", as
   const content = `${MARKER} the capital of testlandia is bunbury`;
   const first = await call("capture_thought", { content });
   expect(first.toLowerCase()).toContain("evidence");
-  const id = first.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
+  const id = first.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0] ?? "";
   expect(id).toBeTruthy();
 
   // Governance defaults for an agent capture.

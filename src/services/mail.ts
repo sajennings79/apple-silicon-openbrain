@@ -1,8 +1,9 @@
 import { db } from "../db/client.js";
 import { memories, type sources } from "../db/schema.js";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, or, isNull, isNotNull } from "drizzle-orm";
 import { storeMemory } from "../tools/StoreMemory.js";
 import { ingestUrl } from "./ingest.js";
+import { expiryFor } from "./retention.js";
 
 type SourceRow = typeof sources.$inferSelect;
 
@@ -11,6 +12,7 @@ interface MailConfig {
   query?: string;
   maxMessages?: number;
   followLinks?: boolean; // if true, extract article URLs from body and ingest each one
+  retentionDays?: number;
 }
 
 // URLs to skip when following links — unsubscribe, tracking, social, image CDNs, etc.
@@ -153,7 +155,15 @@ async function alreadyIngested(sourceId: string): Promise<boolean> {
   const rows = await db
     .select({ id: memories.id })
     .from(memories)
-    .where(and(eq(memories.source, "mail"), eq(memories.sourceId, sourceId), isNull(memories.deletedAt)))
+    .where(
+      and(
+        eq(memories.source, "mail"),
+        eq(memories.sourceId, sourceId),
+        // Retention tombstones (deleted + expiring) still count as ingested so
+        // expired mail isn't re-imported; user deletes stay re-ingestable.
+        or(isNull(memories.deletedAt), isNotNull(memories.expiresAt)),
+      ),
+    )
     .limit(1);
   return rows.length > 0;
 }
@@ -165,6 +175,7 @@ export async function syncMailSource(source: SourceRow): Promise<{ ingested: num
 
   const query = cfg.query ?? DEFAULT_QUERY;
   const max = cfg.maxMessages ?? DEFAULT_MAX;
+  const expiresAt = expiryFor(source.config);
 
   const search = await runGog<SearchResult>([
     "gmail",
@@ -213,7 +224,7 @@ export async function syncMailSource(source: SourceRow): Promise<{ ingested: num
           memoryType: "fact",
           tags: msg.labelIds ?? [],
         },
-        { createdBy: "import" },
+        { createdBy: "import", originSourceId: source.id, expiresAt },
       );
       ingested++;
 
@@ -222,7 +233,7 @@ export async function syncMailSource(source: SourceRow): Promise<{ ingested: num
         const links = extractLinks(body);
         for (const link of links) {
           try {
-            const r = await ingestUrl(link);
+            const r = await ingestUrl(link, { originSourceId: source.id, expiresAt });
             if (r.status === "created") ingested++;
             else duplicates++;
           } catch (err) {

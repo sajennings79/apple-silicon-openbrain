@@ -42,6 +42,10 @@ export interface StoreMemoryOptions {
   workspaceId?: string;
   projectId?: string;
   visibility?: string;
+  // Attribution: the `sources` row that triggered this ingest (sync paths only).
+  originSourceId?: string;
+  // Retention: opt-in per-source expiry, stamped only on newly created rows.
+  expiresAt?: Date;
 }
 
 export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOptions = {}) {
@@ -99,6 +103,8 @@ export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOpti
       workspaceId: opts.workspaceId ?? null,
       projectId: opts.projectId ?? null,
       visibility: opts.visibility ?? null,
+      originSourceId: opts.originSourceId ?? null,
+      expiresAt: opts.expiresAt ?? null,
     })
     // Backstop against the SELECT-then-INSERT dedup race: if a concurrent run
     // already inserted this (source, source_id), the partial unique index makes
@@ -134,7 +140,12 @@ export async function storeMemory(input: StoreMemoryInput, opts: StoreMemoryOpti
     action: "capture",
     source: input.source ?? null,
     actor: createdBy,
-    diff: { provenanceStatus, reviewStatus, memoryType: input.memoryType ?? null },
+    diff: {
+      provenanceStatus,
+      reviewStatus,
+      memoryType: input.memoryType ?? null,
+      originSourceId: opts.originSourceId ?? null,
+    },
   }).catch(() => {});
 
   // Fire-and-forget enrichment via mlx-lm (skipped during bulk imports).

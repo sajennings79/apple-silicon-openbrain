@@ -1,6 +1,6 @@
 import { db } from "../db/client.js";
 import { memories } from "../db/schema.js";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, or, isNull, isNotNull } from "drizzle-orm";
 import { scrapeUrl } from "./scrape.js";
 import { isYouTubeUrl, fetchYouTubeTranscript } from "./youtube.js";
 import { storeMemory } from "../tools/StoreMemory.js";
@@ -11,7 +11,15 @@ export interface IngestResult {
   title: string;
 }
 
-export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
+// Trusted sync-path context: attribution to the `sources` row that triggered
+// this ingest, and its opt-in retention expiry. Bookmarklet/API callers omit
+// both (no attribution, never expires).
+export interface IngestOptions {
+  originSourceId?: string;
+  expiresAt?: Date;
+}
+
+export async function ingestUrl(targetUrl: string, opts: IngestOptions = {}): Promise<IngestResult> {
   // A URL maps deterministically to one source, so dedup on (source, source_id)
   // to match the partial unique index and avoid re-scraping known URLs.
   const source = isYouTubeUrl(targetUrl) ? "youtube" : "web";
@@ -23,7 +31,11 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
       and(
         eq(memories.source, source),
         eq(memories.sourceId, targetUrl),
-        isNull(memories.deletedAt),
+        // Live rows dedup as before. Soft-deleted rows with an expiry are
+        // retention tombstones and ALSO count as duplicates — otherwise a
+        // webpage source re-listing an old link would resurrect expired
+        // content. User deletes (no expiry) stay re-ingestable.
+        or(isNull(memories.deletedAt), isNotNull(memories.expiresAt)),
       ),
     )
     .limit(1);
@@ -41,7 +53,7 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
         sourceId: targetUrl,
         memoryType: "fact",
       },
-      { createdBy: "import" },
+      { createdBy: "import", originSourceId: opts.originSourceId, expiresAt: opts.expiresAt },
     );
     return { status: "created", id: result.id, title: yt.title };
   }
@@ -54,7 +66,7 @@ export async function ingestUrl(targetUrl: string): Promise<IngestResult> {
       sourceId: targetUrl,
       memoryType: "fact",
     },
-    { createdBy: "import" },
+    { createdBy: "import", originSourceId: opts.originSourceId, expiresAt: opts.expiresAt },
   );
   return { status: "created", id: result.id, title: scraped.title };
 }
