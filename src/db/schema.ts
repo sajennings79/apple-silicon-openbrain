@@ -47,6 +47,10 @@ export const memories = pgTable(
     workspaceId: text("workspace_id"),
     projectId: text("project_id"),
     visibility: text("visibility"),
+    // Attribution: which `sources` row ingested this memory. Deliberately NOT a
+    // FK (same philosophy as memory_audit.memory_id) — deleting a source must
+    // never touch memory rows; dangling ids render as "(deleted source)".
+    originSourceId: uuid("origin_source_id"),
   },
   (table) => [
     index("idx_memories_tags").using("gin", table.tags),
@@ -72,6 +76,16 @@ export const memories = pgTable(
     index("idx_memories_supersedes")
       .on(table.supersedes)
       .where(sql`${table.supersedes} IS NOT NULL`),
+    index("idx_memories_origin_source")
+      .on(table.originSourceId)
+      .where(sql`${table.originSourceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    // Retention sweeper scan (live rows with an expiry) and purge scan.
+    index("idx_memories_expires")
+      .on(table.expiresAt)
+      .where(sql`${table.expiresAt} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    index("idx_memories_deleted")
+      .on(table.deletedAt)
+      .where(sql`${table.deletedAt} IS NOT NULL`),
     // Trust rule: instruction-grade memory must be human-confirmed or trusted-imported.
     // NULL-safe: `provenance_status IN (...)` is NULL when provenance_status is NULL,
     // and Postgres treats a NULL CHECK predicate as satisfied — COALESCE(...,false)

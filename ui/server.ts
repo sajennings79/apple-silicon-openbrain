@@ -6,6 +6,14 @@ import { updateMemory, UpdateMemorySchema } from "../src/tools/UpdateMemory.js";
 import { recallMemory } from "../src/tools/RecallMemory.js";
 import { searchMemory, SearchMemorySchema } from "../src/tools/SearchMemory.js";
 import { reviewMemory, ReviewMemorySchema } from "../src/tools/ReviewMemory.js";
+import { handleSourcesRoute } from "../src/api/sources.js";
+import {
+  sweepExpired,
+  purgeSoftDeleted,
+  maintenanceStats,
+  resolveExactDuplicates,
+  auditBatch,
+} from "../src/services/maintenance.js";
 
 /**
  * Derive OB1-shaped display fields from our own trust ladder. The OB1 dashboard
@@ -51,7 +59,43 @@ const numberParam = (raw: string | null, fallback: number) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+interface MemoryFilters {
+  tag?: string | null;
+  type?: string | null;
+  source?: string | null;
+  q?: string | null;
+  sid?: string | null;
+}
+
+/**
+ * Single WHERE builder shared by the memories list and the bulk endpoints so
+ * "what you see" and "what bulk affects" can never diverge. `invalid` flags a
+ * malformed sid (caller returns an empty/0 result instead of a uuid cast error).
+ */
+function memoryFilterConds(f: MemoryFilters) {
+  const conds = [isNull(memories.deletedAt)];
+  let filterCount = 0;
+  let invalid = false;
+  if (f.tag) { conds.push(sql`${f.tag} = ANY(${memories.tags})`); filterCount++; }
+  if (f.type) { conds.push(eq(memories.memoryType, f.type)); filterCount++; }
+  if (f.source) { conds.push(eq(memories.source, f.source)); filterCount++; }
+  if (f.q) { conds.push(ilike(memories.content, `%${f.q}%`)); filterCount++; }
+  if (f.sid) {
+    filterCount++;
+    if (new RegExp(`^${ID_RE}$`, "i").test(f.sid)) conds.push(eq(memories.originSourceId, f.sid));
+    else invalid = true;
+  }
+  return { conds, filterCount, invalid };
+}
+
 const PORT = Number(process.env.UI_PORT ?? 6279);
+// Sync execution must stay in the MCP process (single GPU enrichment queue,
+// single in-process syncInProgress guard) — the UI proxies sync actions there
+// and serves sources CRUD directly (plain DB ops, process-agnostic).
+const MCP_BASE = `http://127.0.0.1:${process.env.MCP_PORT ?? 6277}`;
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
+// Single enrich-backlog child at a time; status is exposed via /api/maintenance/stats.
+let enrichProc: ReturnType<typeof Bun.spawn> | null = null;
 const indexHtml = await Bun.file(new URL("./index.html", import.meta.url)).text();
 
 const json = (data: unknown, status = 200) =>
@@ -71,18 +115,67 @@ Bun.serve({
       return new Response(indexHtml, { headers: { "content-type": "text/html" } });
     }
 
+    // ---- Maintenance (pure DB ops — safe in the UI process) ----
+    if (pathname === "/api/maintenance/stats" && req.method === "GET") {
+      const stats = await maintenanceStats();
+      return json({ ...stats, enrichRunning: enrichProc !== null && enrichProc.exitCode === null });
+    }
+    if (pathname === "/api/maintenance/sweep" && req.method === "POST") {
+      return json(await sweepExpired());
+    }
+    if (pathname === "/api/maintenance/purge" && req.method === "POST") {
+      const body = (await req.json().catch(() => ({}))) as { olderThanDays?: number };
+      const days = Number(body.olderThanDays);
+      return json(await purgeSoftDeleted(Number.isFinite(days) && days > 0 ? days : 30));
+    }
+    if (pathname === "/api/maintenance/resolve-exact-duplicates" && req.method === "POST") {
+      return json(await resolveExactDuplicates());
+    }
+    // Enrichment backlog runs as the existing standalone script (idempotent,
+    // concurrency-1 GPU-safe) — spawned, not run in-process, so hours of LLM
+    // work can't destabilize the request-serving UI process.
+    if (pathname === "/api/maintenance/enrich-backlog" && req.method === "POST") {
+      if (enrichProc && enrichProc.exitCode === null) {
+        return json({ error: "enrich-backlog already running" }, 409);
+      }
+      enrichProc = Bun.spawn(["bun", "run", "scripts/enrich-backlog.ts"], {
+        cwd: REPO_ROOT,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      return json({ ok: true, started: true }, 202);
+    }
+    if (pathname === "/api/maintenance/enrich-backlog/stop" && req.method === "POST") {
+      if (!enrichProc || enrichProc.exitCode !== null) {
+        return json({ error: "not running" }, 409);
+      }
+      enrichProc.kill();
+      return json({ ok: true, stopped: true });
+    }
+
+    // Sources: proxy sync actions to the MCP process, serve CRUD in-process.
+    if (pathname.startsWith("/api/sources")) {
+      if (req.method === "POST" && /^\/api\/sources\/(poll-due|[0-9a-f-]{36}\/sync)$/i.test(pathname)) {
+        try {
+          return await fetch(MCP_BASE + pathname, { method: "POST" });
+        } catch {
+          return json({ error: `MCP server unreachable at ${MCP_BASE} — is \`bun run dev\` running?` }, 502);
+        }
+      }
+      const sourcesResponse = await handleSourcesRoute(req, url);
+      if (sourcesResponse) return sourcesResponse;
+    }
+
     if (req.method === "GET" && pathname === "/api/memories") {
       const limit = Math.min(Math.max(numberParam(url.searchParams.get("limit"), 100), 1), 500);
-      const tag = url.searchParams.get("tag");
-      const type = url.searchParams.get("type");
-      const source = url.searchParams.get("source");
-      const q = url.searchParams.get("q");
-
-      const conds = [isNull(memories.deletedAt)];
-      if (tag) conds.push(sql`${tag} = ANY(${memories.tags})`);
-      if (type) conds.push(eq(memories.memoryType, type));
-      if (source) conds.push(eq(memories.source, source));
-      if (q) conds.push(ilike(memories.content, `%${q}%`));
+      const { conds, invalid } = memoryFilterConds({
+        tag: url.searchParams.get("tag"),
+        type: url.searchParams.get("type"),
+        source: url.searchParams.get("source"),
+        q: url.searchParams.get("q"),
+        sid: url.searchParams.get("sid"),
+      });
+      if (invalid) return json([]);
 
       const effectiveDate = sql<string>`coalesce(${memories.sourceDate}, ${memories.createdAt})`.as("effective_date");
       const rows = await db
@@ -155,6 +248,97 @@ Bun.serve({
       });
     }
 
+    // POST /api/memories/bulk-preview  body: { filters } → { count }
+    if (req.method === "POST" && pathname === "/api/memories/bulk-preview") {
+      const body = (await req.json().catch(() => ({}))) as { filters?: MemoryFilters };
+      const { conds, filterCount, invalid } = memoryFilterConds(body.filters ?? {});
+      if (filterCount === 0) return json({ error: "refusing bulk operation without at least one filter" }, 400);
+      if (invalid) return json({ count: 0 });
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(memories)
+        .where(and(...conds));
+      return json({ count: row.count });
+    }
+
+    // POST /api/memories/bulk
+    // body: { filters, action: "delete"|"add-tag"|"set-expiry", tag?, expiresInDays?, expectedCount }
+    if (req.method === "POST" && pathname === "/api/memories/bulk") {
+      const body = (await req.json().catch(() => ({}))) as {
+        filters?: MemoryFilters;
+        action?: string;
+        tag?: string;
+        expiresInDays?: number | null;
+        expectedCount?: number;
+      };
+      const { conds, filterCount, invalid } = memoryFilterConds(body.filters ?? {});
+      if (filterCount === 0) return json({ error: "refusing bulk operation without at least one filter" }, 400);
+      if (invalid) return json({ error: "invalid filter value" }, 400);
+      if (!["delete", "add-tag", "set-expiry"].includes(body.action ?? "")) {
+        return json({ error: "unknown action" }, 400);
+      }
+
+      // Drift guard: re-count and refuse if the match set changed since the
+      // user previewed/confirmed. The UI re-previews on 409.
+      const [recount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(memories)
+        .where(and(...conds));
+      if (recount.count !== body.expectedCount) {
+        return json({ error: "match count changed since preview", count: recount.count }, 409);
+      }
+
+      const filtersDiff = Object.fromEntries(
+        Object.entries(body.filters ?? {}).filter(([, v]) => v),
+      );
+      let affected: { id: string }[] = [];
+
+      if (body.action === "delete") {
+        affected = await db
+          .update(memories)
+          .set({ deletedAt: new Date(), updatedAt: new Date() })
+          .where(and(...conds))
+          .returning({ id: memories.id });
+        await auditBatch(affected.map((r) => r.id), "delete", { reason: "bulk-filter-delete", filters: filtersDiff }, "user");
+      } else if (body.action === "add-tag") {
+        const tag = (body.tag ?? "").trim();
+        if (!tag) return json({ error: "tag required" }, 400);
+        // Idempotent: rows already carrying the tag are skipped (affected may
+        // be less than expectedCount — that's correct, not drift). The
+        // remove-then-append keeps the array duplicate-free even if a
+        // concurrent writer added the tag between the WHERE check and the SET.
+        affected = await db
+          .update(memories)
+          .set({
+            tags: sql`array_append(array_remove(coalesce(${memories.tags}, '{}'), ${tag}), ${tag})`,
+            updatedAt: new Date(),
+          })
+          .where(and(...conds, sql`NOT (${tag} = ANY(coalesce(${memories.tags}, '{}')))`))
+          .returning({ id: memories.id });
+        await auditBatch(affected.map((r) => r.id), "update", { bulkAddTag: tag, filters: filtersDiff }, "user");
+      } else {
+        const days = body.expiresInDays;
+        if (days != null && (!Number.isFinite(days) || days <= 0)) {
+          return json({ error: "expiresInDays must be a positive number or null" }, 400);
+        }
+        affected = await db
+          .update(memories)
+          .set({
+            expiresAt: days == null ? null : sql`NOW() + make_interval(days => ${days})`,
+            updatedAt: new Date(),
+          })
+          .where(and(...conds))
+          .returning({ id: memories.id });
+        await auditBatch(
+          affected.map((r) => r.id),
+          "update",
+          { bulkSetExpiryDays: days ?? null, filters: filtersDiff },
+          "user",
+        );
+      }
+      return json({ affected: affected.length });
+    }
+
     if (req.method === "POST" && pathname === "/api/memories") {
       try {
         const body = await req.json();
@@ -220,12 +404,14 @@ Bun.serve({
           SELECT content_fingerprint
           FROM memories
           WHERE deleted_at IS NULL AND content_fingerprint IS NOT NULL
+            AND COALESCE(provenance_status, '') <> 'superseded'
           GROUP BY content_fingerprint HAVING count(*) > 1
         )
         SELECT m.content_fingerprint AS fp, m.id, m.content, m.created_at AS "createdAt",
                m.source, m.review_status AS "reviewStatus", m.provenance_status AS "provenanceStatus"
         FROM memories m JOIN dup ON dup.content_fingerprint = m.content_fingerprint
         WHERE m.deleted_at IS NULL
+          AND COALESCE(m.provenance_status, '') <> 'superseded'
         ORDER BY m.content_fingerprint, m.created_at
       `) as any[];
       const groupMap = new Map<string, any[]>();

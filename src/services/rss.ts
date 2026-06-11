@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { ingestUrl } from "./ingest.js";
+import { expiryFor } from "./retention.js";
 import type { sources } from "../db/schema.js";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -8,6 +9,7 @@ interface RssConfig {
   feedUrl?: string;
   url?: string;
   followLinks?: boolean;
+  retentionDays?: number;
 }
 
 interface FeedItem {
@@ -85,11 +87,12 @@ export async function syncRssSource(source: SourceRow): Promise<{ ingested: numb
 
   const items = await fetchAndParseFeed(feedUrl);
 
+  const expiresAt = expiryFor(source.config);
   let ingested = 0;
   let duplicates = 0;
   for (const item of items) {
     try {
-      const result = await ingestUrl(item.link);
+      const result = await ingestUrl(item.link, { originSourceId: source.id, expiresAt });
       if (result.status === "created") ingested++;
       else duplicates++;
     } catch (err) {

@@ -6,14 +6,14 @@ Fully local AI memory system for Apple Silicon Macs. MCP server giving Claude Co
 
 - **MCP Server** (`src/index.ts`): Bun HTTP server on port 6277. Handles MCP protocol via `WebStandardStreamableHTTPServerTransport`, plus REST endpoints for URL ingestion.
 - **Embedding Service** (`embed-service/server.py`): Python FastAPI on port 6278. Uses MLX to run `Qwen3-Embedding-0.6B-4bit-DWQ` locally on Metal GPU. Produces 1024-dim vectors.
-- **Enrichment**: Calls mlx-lm server (port 8000) running `Qwen3-8B-4bit` (default; configurable via `LLM_MODEL`) to auto-extract summary, tags, and entities from stored memories. Fire-and-forget after store/update.
+- **Enrichment**: Calls mlx-lm server (port 8000) running `Qwen3.6-27B-4bit` (configured via `LLM_MODEL`; must match the `--model` the server actually loads, or mlx-lm hot-swaps and thrashes the 32GB GPU) to auto-extract summary, tags, and entities from stored memories. Fire-and-forget after store/update. The same loaded model also serves Hermes local-model cron jobs and delegation.
 - **PostgreSQL + pgvector**: `memories` table with HNSW vector index, GIN indexes on tags/entities/FTS.
 - **Redis**: Optional caching layer for embeddings (24h TTL) and search results (5min TTL). Degrades gracefully if unavailable.
 - **Web UI** (`ui/`): Single-page dashboard on port 6279 for browsing/searching memories.
 
 ## Key Patterns
 
-- **Qwen3.x think blocks**: Enrichment strips `<think>...</think>` from Qwen3.x responses. The enrichment prompt uses `/no_think` prefix.
+- **Qwen3.x think blocks**: Qwen3.6 **ignores the `/no_think` prefix** — the real reasoning switch is `chat_template_kwargs: { enable_thinking: false }` in the request body (`enrichment.ts:76`). Without it the model can burn the whole `max_tokens` budget reasoning and return empty content. The `<think>...</think>` strip is now belt-and-suspenders (no inline think tags on current models).
 - **Vector dimensions**: Fixed at 1024 (matches the embedding model). Schema, HNSW index, and embedding service all assume this.
 - **Drizzle ORM**: Has built-in `vector` column type. Do NOT use the `pgvector/drizzle-orm` npm package.
 - **Source field**: Open string, not an enum. Common values: `claude-code`, `manual`, `web`, `youtube`.

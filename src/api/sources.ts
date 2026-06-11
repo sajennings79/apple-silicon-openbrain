@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { db } from "../db/client.js";
+import { db, pg } from "../db/client.js";
 import { sources } from "../db/schema.js";
 import { eq, desc } from "drizzle-orm";
 import { syncSource, syncDueSources } from "../services/sourceSync.js";
+import { maybeRunMaintenance } from "../services/maintenance.js";
 
 const KIND_VALUES = ["mail", "rss", "webpage"] as const;
 
@@ -38,7 +39,15 @@ export async function handleSourcesRoute(req: Request, url: URL): Promise<Respon
   if (pathname === "/api/sources") {
     if (req.method === "GET") {
       const rows = await db.select().from(sources).orderBy(desc(sources.createdAt));
-      return json(rows);
+      // Live-memory count per source (attribution via origin_source_id).
+      const counts = (await pg`
+        SELECT origin_source_id AS id, count(*)::int AS count
+        FROM memories
+        WHERE deleted_at IS NULL AND origin_source_id IS NOT NULL
+        GROUP BY origin_source_id
+      `) as { id: string; count: number }[];
+      const countById = new Map(counts.map((c) => [c.id, c.count]));
+      return json(rows.map((r) => ({ ...r, memoryCount: countById.get(r.id) ?? 0 })));
     }
     if (req.method === "POST") {
       try {
@@ -70,6 +79,10 @@ export async function handleSourcesRoute(req: Request, url: URL): Promise<Respon
         } else {
           console.log(`[poll-due] synced ${reports.length} source(s), ${reports.reduce((n, r) => n + r.ingested, 0)} ingested`);
         }
+        // Opportunistic daily hygiene (sweep expired, purge old deletes).
+        // Accepted race: a sweep landing between a sync's dedup SELECT and its
+        // insert can produce one duplicate live row — benign, it re-expires.
+        maybeRunMaintenance().catch((err) => console.error("[maintenance] error:", err));
       })
       .catch((err) => console.error("[poll-due] unexpected error:", err));
     return json({ ok: true, status: "sync started" }, 202);
