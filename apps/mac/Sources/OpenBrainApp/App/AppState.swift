@@ -32,7 +32,12 @@ final class AppState {
     func bootstrap() async {
         await refreshSources()
         await refreshRecentMemories()
-        scheduler?.start()
+        // NOTE: the recurring poll heartbeat is owned exclusively by the
+        // launchd job `com.openbrain.poll` (fires 3x/day: 07:00 / 12:30 /
+        // 18:00). The app deliberately does NOT start its own timer — a second
+        // uncoordinated heartbeat would scrape sources (and hit Firecrawl)
+        // between those windows. `syncAllNow()` is still wired to the manual
+        // "Sync now" control for on-demand syncs.
         healthMonitor?.start()
     }
 
